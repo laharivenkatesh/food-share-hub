@@ -15,7 +15,7 @@ const purposes: { key: Purpose; label: string }[] = [
 
 export default function PostFood() {
   const nav = useNavigate();
-  const { addPost } = useMyPosts();
+  const { addPost, getLastPostTime } = useMyPosts();
   const [image, setImage] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -33,21 +33,48 @@ export default function PostFood() {
   const [allowSplit, setAllowSplit] = useState(true);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return toast.error("Geolocation not supported");
+    toast.loading("Finding your location...", { id: "loc" });
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLat(pos.coords.latitude.toFixed(6));
-        setLng(pos.coords.longitude.toFixed(6));
-        toast.success("Location set");
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setLat(latitude.toFixed(6));
+        setLng(longitude.toFixed(6));
+        
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          if (data && data.display_name) {
+            setAddress(data.display_name);
+            toast.success("Location set accurately!", { id: "loc" });
+          } else {
+            toast.success("Coordinates set", { id: "loc" });
+          }
+        } catch {
+          toast.success("Coordinates set, but could not fetch address", { id: "loc" });
+        }
       },
-      () => toast.error("Could not get location"),
+      () => toast.error("Could not get location", { id: "loc" }),
     );
   };
 
-  const submit = async (e: React.FormEvent) => {
+  const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const lastPostTime = getLastPostTime();
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    
+    if (Date.now() - lastPostTime < TWO_HOURS) {
+      setShowConfirm(true);
+    } else {
+      executeSubmit();
+    }
+  };
+
+  const executeSubmit = async () => {
+    setShowConfirm(false);
     setBusy(true);
     const res = await addPost({
       name: name.trim(),
@@ -79,7 +106,22 @@ export default function PostFood() {
     <div className="px-4 py-5 space-y-5">
       <h1 className="text-2xl font-extrabold tracking-tight">Post Leftover Food</h1>
 
-      <form onSubmit={submit} className="space-y-5">
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card shadow-card rounded-3xl p-6 max-w-sm w-full border border-border">
+            <h2 className="text-xl font-extrabold mb-3 text-foreground">Post Frequency Warning</h2>
+            <p className="text-muted-foreground text-sm font-semibold mb-6">
+              You posted food less than 2 hours ago. Is this new food prepared or being cooked in less than 5-6 hours?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirm(false)} className="btn-secondary flex-1">No, Cancel</button>
+              <button onClick={executeSubmit} className="btn-primary flex-1">Yes, Proceed</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleInitialSubmit} className="space-y-5">
         <label className="block">
           <div className="h-44 rounded-2xl border-2 border-dashed border-border bg-muted/40 flex flex-col items-center justify-center cursor-pointer overflow-hidden">
             {image ? (

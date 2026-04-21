@@ -1,42 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FoodItem } from "@/types/food";
-import { supabase, FoodRow } from "@/lib/supabase";
-import { useAuth } from "./useAuth";
-
-const rowToFood = (r: FoodRow, providerName = "You"): FoodItem => ({
-  id: r.id,
-  name: r.name,
-  image: r.image || "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80",
-  feeds: r.feeds,
-  price: Number(r.price),
-  expiryHours: Number(r.expiry_hours),
-  preparedAt: r.prepared_at,
-  address: r.address,
-  lat: r.lat,
-  lng: r.lng,
-  category: r.category,
-  tags: r.tags ?? [],
-  purpose: r.purpose,
-  safeForAnimals: r.safe_for_animals,
-  status: r.status,
-  realtimeStatus: r.realtime_status,
-  trustScore: 4.5,
-  confidence: "High",
-  quantity: r.quantity,
-  notes: r.notes ?? undefined,
-  allowSplit: r.allow_split,
-  provider: {
-    id: r.user_id,
-    name: providerName,
-    trustScore: 4.5,
-    badges: ["Community Member"],
-    streak: 1,
-    reliability: "high",
-    avatar: "🧑",
-  },
-  reviews: [],
-  postedAt: new Date(r.created_at).toLocaleString(),
-});
+import { useAuth, MockProfile } from "./useAuth";
+import { mockFoods } from "@/data/mockFoods";
 
 export function useMyPosts() {
   const { user, profile } = useAuth();
@@ -49,45 +14,92 @@ export function useMyPosts() {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
-      .from("foods")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    if (!error && data) {
-      setPosts((data as FoodRow[]).map((r) => rowToFood(r, profile?.name ?? "You")));
+    const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
+    const allFoods: FoodItem[] = JSON.parse(stored);
+    
+    // Also save to localStorage if it wasn't there
+    if (!localStorage.getItem("zerra_foods")) {
+      localStorage.setItem("zerra_foods", stored);
     }
+
+    const myPosts = allFoods.filter(f => f.provider.id === user.id).sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    setPosts(myPosts);
     setLoading(false);
-  }, [user, profile?.name]);
+  }, [user]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   const addPost = useCallback(
-    async (input: Omit<FoodRow, "id" | "user_id" | "created_at">) => {
+    async (input: any) => {
       if (!user) return { ok: false as const, error: "Not authenticated" };
-      const { data, error } = await supabase
-        .from("foods")
-        .insert({ ...input, user_id: user.id })
-        .select()
-        .single();
-      if (error) return { ok: false as const, error: error.message };
-      setPosts((prev) => [rowToFood(data as FoodRow, profile?.name ?? "You"), ...prev]);
-      return { ok: true as const, data };
+      
+      const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
+      const allFoods: FoodItem[] = JSON.parse(stored);
+
+      const newFood: FoodItem = {
+        id: "f_" + Math.random().toString(36).substring(2, 9),
+        name: input.name,
+        image: input.image || "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80",
+        feeds: input.feeds,
+        price: input.price,
+        expiryHours: input.expiry_hours,
+        preparedAt: input.prepared_at,
+        address: input.address,
+        lat: input.lat,
+        lng: input.lng,
+        category: input.category,
+        tags: input.tags,
+        purpose: input.purpose,
+        safeForAnimals: input.safe_for_animals,
+        status: input.status,
+        realtimeStatus: input.realtime_status,
+        trustScore: 4.5,
+        confidence: "High",
+        quantity: input.quantity,
+        notes: input.notes,
+        allowSplit: input.allow_split,
+        provider: {
+          id: user.id,
+          name: profile?.name ?? "You",
+          trustScore: 4.5,
+          badges: ["Community Member"],
+          streak: 1,
+          reliability: "high",
+          avatar: "🧑",
+        },
+        reviews: [],
+        postedAt: new Date().toISOString(),
+      };
+
+      const updatedFoods = [newFood, ...allFoods];
+      localStorage.setItem("zerra_foods", JSON.stringify(updatedFoods));
+      setPosts(prev => [newFood, ...prev]);
+      
+      return { ok: true as const, data: newFood };
     },
     [user, profile?.name],
   );
 
   const removePost = useCallback(
     async (id: string) => {
-      const { error } = await supabase.from("foods").delete().eq("id", id);
-      if (!error) setPosts((prev) => prev.filter((p) => p.id !== id));
+      const stored = localStorage.getItem("zerra_foods") || "[]";
+      let allFoods: FoodItem[] = JSON.parse(stored);
+      allFoods = allFoods.filter(f => f.id !== id);
+      localStorage.setItem("zerra_foods", JSON.stringify(allFoods));
+      setPosts((prev) => prev.filter((p) => p.id !== id));
     },
     [],
   );
 
-  return { posts, loading, addPost, removePost, refresh };
+  const getLastPostTime = useCallback(() => {
+    if (posts.length === 0) return 0;
+    const sorted = [...posts].sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    return new Date(sorted[0].postedAt).getTime();
+  }, [posts]);
+
+  return { posts, loading, addPost, removePost, refresh, getLastPostTime };
 }
 
 export function useAllFoods() {
@@ -95,26 +107,14 @@ export function useAllFoods() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("foods")
-        .select("*, profiles(name)")
-        .order("created_at", { ascending: false });
-      if (!cancelled) {
-        if (!error && data) {
-          setFoods(
-            (data as (FoodRow & { profiles: { name: string } | null })[]).map((r) =>
-              rowToFood(r, r.profiles?.name ?? "Community Member"),
-            ),
-          );
-        }
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
+    let allFoods: FoodItem[] = JSON.parse(stored);
+    
+    // Sort by created at desc
+    allFoods.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    
+    setFoods(allFoods);
+    setLoading(false);
   }, []);
 
   return { foods, loading };

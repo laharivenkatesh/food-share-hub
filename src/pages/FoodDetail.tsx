@@ -28,22 +28,53 @@ export default function FoodDetail() {
   const isUrgent = food.expiryHours < 1;
   const isReserved = food.status === "reserved" && !tx;
 
-  const renderTransactionStatus = () => {
-    if (tx?.status === "completed") {
-      return (
-        <div className="bg-success/15 border border-success text-success p-4 rounded-2xl flex items-center justify-center gap-2 font-bold">
-          <CheckCircle2 className="w-5 h-5" /> Transaction Completed
-        </div>
-      );
-    }
+  const getProfileFromStorage = (userId: string) => {
+    const usersJson = localStorage.getItem("zerra_users") || "[]";
+    const users = JSON.parse(usersJson);
+    return users.find((u: any) => u.id === userId);
+  };
 
-    if (tx?.status === "floating") {
+  const renderTransactionStatus = () => {
+    if (tx?.status === "completed" || tx?.status === "floating") {
+      const oppositeId = isDonor ? tx.collectorId : tx.donorId;
+      const oppositeProfile = oppositeId ? getProfileFromStorage(oppositeId) : null;
+
+      const ContactCard = () => (
+        oppositeProfile ? (
+          <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3">
+            <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
+              {isDonor ? "Collector Details" : "Donor Details"}
+            </p>
+            <p className="font-extrabold text-foreground text-lg">{oppositeProfile.name}</p>
+            <p className="text-sm font-bold text-primary-deep">{oppositeProfile.phone || "No phone provided"}</p>
+          </div>
+        ) : null
+      );
+
+      if (tx.status === "completed") {
+        return (
+          <div className="space-y-3">
+            <ContactCard />
+            <div className="bg-success/15 border border-success text-success p-4 rounded-2xl flex items-center justify-center gap-2 font-bold">
+              <CheckCircle2 className="w-5 h-5" /> Transaction Completed
+            </div>
+          </div>
+        );
+      }
+
+      // Floating status
       if (isCollector) {
         if (tx.collectorAccepted) {
-          return <button disabled className="btn-secondary opacity-70">Waiting for donor to confirm...</button>;
+          return (
+            <div className="space-y-3">
+              <ContactCard />
+              <button disabled className="btn-secondary opacity-70">Waiting for donor to confirm...</button>
+            </div>
+          );
         }
         return (
           <div className="space-y-3">
+            <ContactCard />
             <div className="p-3 bg-warning/15 text-warning font-bold rounded-xl text-center text-sm">
               You requested this food. Confirm when you collect it.
             </div>
@@ -53,12 +84,19 @@ export default function FoodDetail() {
           </div>
         );
       }
+
       if (isDonor) {
         if (tx.donorAccepted) {
-          return <button disabled className="btn-secondary opacity-70">Waiting for collector to confirm...</button>;
+          return (
+            <div className="space-y-3">
+              <ContactCard />
+              <button disabled className="btn-secondary opacity-70">Waiting for collector to confirm...</button>
+            </div>
+          );
         }
         return (
           <div className="space-y-3">
+            <ContactCard />
             <div className="p-3 bg-primary/15 text-primary-deep font-bold rounded-xl text-center text-sm">
               Someone has requested this. Confirm when you donate it.
             </div>
