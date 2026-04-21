@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Get the current session on mount
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -63,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
+    // Listen for auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -80,7 +82,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ---------------------------------------------------------------------------
   // login
+  // ---------------------------------------------------------------------------
   const login: AuthContextValue["login"] = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
@@ -91,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
+  // ---------------------------------------------------------------------------
   // signup — ONLY create auth user, let trigger handle profile
+  // ---------------------------------------------------------------------------
   const signup: AuthContextValue["signup"] = async ({
     name,
     email,
@@ -120,14 +126,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!data.user)
       return { ok: false, error: "Signup failed — please try again." };
 
-    // DO NOT insert profile here - the trigger will do it automatically!
-    // Just wait a moment for the trigger to complete
+    // IMPORTANT: DO NOT insert profile here - the trigger will do it automatically!
+    // Wait a moment for the trigger to complete
     await new Promise(resolve => setTimeout(resolve, 500));
 
     return { ok: true };
   };
 
+  // ---------------------------------------------------------------------------
   // logout
+  // ---------------------------------------------------------------------------
   const logout = async () => {
     await supabase.auth.signOut();
   };
