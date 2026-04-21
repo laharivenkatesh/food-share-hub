@@ -2,6 +2,7 @@ import { FoodItem } from "@/types/food";
 import { Link } from "react-router-dom";
 import { MapPin, Users, AlertTriangle, Star, Navigation } from "lucide-react";
 import MapPreview, { openInGoogleMaps } from "./MapPreview";
+import LiveCountdown from "./LiveCountdown";
 
 const purposeIcon = (p: string) => (p === "humans" ? "🧑 Humans" : p === "animals" ? "🐾 Animals" : "♻️ Both");
 
@@ -48,15 +49,9 @@ export default function FoodCard({ food }: { food: FoodItem }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {isUrgent ? (
-            <span className="badge-pill bg-urgent text-urgent-foreground animate-pulse-soft">
-              🔥 Urgent · {Math.round(food.expiryHours * 60)}m left
-            </span>
-          ) : (
-            <span className="badge-pill bg-muted text-muted-foreground">
-              ⏳ Expires in {food.expiryHours}h
-            </span>
-          )}
+          <span className={`badge-pill ${isUrgent ? 'bg-urgent text-urgent-foreground animate-pulse-soft' : 'bg-muted text-muted-foreground'}`}>
+            <LiveCountdown postedAt={food.postedAt} expiryHours={food.expiryHours} urgent={isUrgent} />
+          </span>
           <span className="badge-pill bg-accent text-accent-foreground">{purposeIcon(food.purpose)}</span>
           {food.safeForAnimals ? (
             <span className="badge-pill bg-primary text-primary-foreground">✔ Safe for animals</span>

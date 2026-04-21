@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RealtimeStatus } from "@/types/food";
 import { useAuth } from "@/hooks/useAuth";
 import { useTransactions } from "@/hooks/useTransactions";
+import LiveCountdown from "@/components/LiveCountdown";
 
 const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "Not Available"];
 
@@ -164,10 +165,12 @@ export default function FoodDetail() {
 
         {isUrgent ? (
           <div className="bg-urgent/15 border border-urgent text-urgent p-3 rounded-2xl font-bold text-sm flex items-center gap-2">
-            🔥 Urgent — expires in {Math.round(food.expiryHours * 60)} minutes
+            <LiveCountdown postedAt={food.postedAt} expiryHours={food.expiryHours} urgent={true} />
           </div>
         ) : (
-          <div className="bg-muted p-3 rounded-2xl text-sm font-semibold">⏳ Expires in {food.expiryHours} hours</div>
+          <div className="bg-muted p-3 rounded-2xl text-sm font-semibold">
+            <LiveCountdown postedAt={food.postedAt} expiryHours={food.expiryHours} urgent={false} />
+          </div>
         )}
 
         {food.purpose === "animals" && (

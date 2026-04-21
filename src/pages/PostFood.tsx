@@ -139,7 +139,13 @@ export default function PostFood() {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) setImage(URL.createObjectURL(file));
+              if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  setImage(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+              }
             }}
           />
         </label>
