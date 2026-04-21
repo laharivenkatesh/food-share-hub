@@ -26,7 +26,7 @@ export default function Auth() {
         : await signup({ name, email, phone, password, role });
     setBusy(false);
 
-    if (!res.ok) {
+    if (res.ok === false) {
       toast.error(res.error);
       return;
     }

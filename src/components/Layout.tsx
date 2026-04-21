@@ -1,9 +1,17 @@
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, PlusCircle, User, Leaf } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const nav = useNavigate();
+  const { user, logout } = useAuth();
   const hideNav = location.pathname === "/auth";
+
+  const handleSignOut = async () => {
+    await logout();
+    nav("/auth");
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative shadow-card">
@@ -15,7 +23,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-extrabold text-xl text-foreground tracking-tight">Zerra</span>
           </Link>
-          <Link to="/auth" className="text-xs font-bold text-primary-deep">Sign Out</Link>
+          {user && (
+            <button onClick={handleSignOut} className="text-xs font-bold text-primary-deep">
+              Sign Out
+            </button>
+          )}
         </header>
       )}
 
