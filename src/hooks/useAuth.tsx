@@ -9,7 +9,11 @@ export interface MockProfile {
   phone: string | null;
   role: Role;
   created_at: string;
-  password?: string;
+}
+
+// Internal type that includes password — never leaves this module
+interface StoredUser extends MockProfile {
+  password: string;
 }
 
 interface AuthContextValue {
@@ -30,6 +34,16 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// ---------------------------------------------------------------------------
+// In-memory user registry — lives only for the lifetime of the browser tab.
+// Passwords are NEVER persisted to any storage. The session (profile without
+// password) is kept in localStorage so the user stays logged in across
+// page refreshes and app restarts until they manually sign out.
+// ---------------------------------------------------------------------------
+const inMemoryUsers: StoredUser[] = [];
+
+const SESSION_KEY = "zerra_session";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<{ access_token: string } | null>(null);
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
@@ -37,93 +51,111 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load session from local storage on mount
-    const storedSession = localStorage.getItem("zerra_session");
-    if (storedSession) {
+    // Restore session from localStorage on mount (no user data — just the
+    // public profile stored when the user last logged in / signed up).
+    const stored = localStorage.getItem(SESSION_KEY);
+    if (stored) {
       try {
-        const parsedProfile = JSON.parse(storedSession) as MockProfile;
+        const parsed = JSON.parse(stored) as MockProfile;
         setSession({ access_token: "mock_token" });
-        setUser({ id: parsedProfile.id, email: parsedProfile.email });
-        setProfile(parsedProfile);
+        setUser({ id: parsed.id, email: parsed.email });
+        setProfile(parsed);
       } catch {
-        localStorage.removeItem("zerra_session");
+        localStorage.removeItem(SESSION_KEY);
       }
     }
     setLoading(false);
   }, []);
 
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+  const persistSession = (p: MockProfile) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(p));
+    setSession({ access_token: "mock_token" });
+    setUser({ id: p.id, email: p.email });
+    setProfile(p);
+  };
+
+  // -------------------------------------------------------------------------
+  // login
+  // -------------------------------------------------------------------------
   const login: AuthContextValue["login"] = async (email, password) => {
-    const usersJson = localStorage.getItem("zerra_users") || "[]";
-    const users: MockProfile[] = JSON.parse(usersJson);
-    
-    const found = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password);
+    const found = inMemoryUsers.find(
+      (u) =>
+        u.email.toLowerCase() === email.trim().toLowerCase() &&
+        u.password === password
+    );
+
     if (!found) {
-      return { ok: false, error: "Invalid email or password" };
+      return {
+        ok: false,
+        error:
+          "Invalid email or password. Note: accounts are session-only — please sign up again if you refreshed the page.",
+      };
     }
 
-    const sessionProfile = { ...found };
-    delete sessionProfile.password;
-    
-    localStorage.setItem("zerra_session", JSON.stringify(sessionProfile));
-    setSession({ access_token: "mock_token" });
-    setUser({ id: sessionProfile.id, email: sessionProfile.email });
-    setProfile(sessionProfile);
-    
+    const { password: _pw, ...publicProfile } = found;
+    persistSession(publicProfile);
     return { ok: true };
   };
 
-  const signup: AuthContextValue["signup"] = async ({ name, email, phone, password, role }) => {
+  // -------------------------------------------------------------------------
+  // signup
+  // -------------------------------------------------------------------------
+  const signup: AuthContextValue["signup"] = async ({
+    name,
+    email,
+    phone,
+    password,
+    role,
+  }) => {
     if (!name.trim()) return { ok: false, error: "Name required" };
-    if (password.length < 6) return { ok: false, error: "Password must be 6+ characters" };
+    if (password.length < 6)
+      return { ok: false, error: "Password must be 6+ characters" };
 
-    const usersJson = localStorage.getItem("zerra_users") || "[]";
-    const users: MockProfile[] = JSON.parse(usersJson);
+    const emailExists = inMemoryUsers.some(
+      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+    );
+    if (emailExists) return { ok: false, error: "Email is already registered" };
 
-    const emailExists = users.some(u => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (emailExists) {
-      return { ok: false, error: "Email is already registered" };
-    }
-
-    if (phone && phone.trim()) {
-      const phoneExists = users.some(u => u.phone === phone.trim());
-      if (phoneExists) {
+    if (phone?.trim()) {
+      const phoneExists = inMemoryUsers.some((u) => u.phone === phone.trim());
+      if (phoneExists)
         return { ok: false, error: "Phone number is already registered" };
-      }
     }
 
-    const newUser: MockProfile = {
+    const newUser: StoredUser = {
       id: "usr_" + Math.random().toString(36).substring(2, 9),
       name: name.trim(),
       email: email.trim().toLowerCase(),
       phone: phone?.trim() || null,
       role,
       created_at: new Date().toISOString(),
-      password,
+      password, // stored only in memory
     };
 
-    users.push(newUser);
-    localStorage.setItem("zerra_users", JSON.stringify(users));
+    inMemoryUsers.push(newUser);
 
-    const sessionProfile = { ...newUser };
-    delete sessionProfile.password;
-
-    localStorage.setItem("zerra_session", JSON.stringify(sessionProfile));
-    setSession({ access_token: "mock_token" });
-    setUser({ id: sessionProfile.id, email: sessionProfile.email });
-    setProfile(sessionProfile);
-
+    const { password: _pw, ...publicProfile } = newUser;
+    persistSession(publicProfile);
     return { ok: true };
   };
 
+  // -------------------------------------------------------------------------
+  // logout
+  // -------------------------------------------------------------------------
   const logout = async () => {
-    localStorage.removeItem("zerra_session");
+    localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setUser(null);
     setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, session, loading, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{ user, profile, session, loading, login, signup, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
