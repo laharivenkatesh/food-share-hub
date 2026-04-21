@@ -1,101 +1,93 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import type { Session, User as SbUser } from "@supabase/supabase-js";
+import { supabase, ProfileRow } from "@/lib/supabase";
 
 export type Role = "Student" | "Provider" | "NGO";
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  role: Role;
-}
-
-interface StoredUser extends User {
-  password: string;
-}
-
 interface AuthContextValue {
-  user: User | null;
+  user: SbUser | null;
+  profile: ProfileRow | null;
+  session: Session | null;
   loading: boolean;
-  login: (email: string, password: string) => { ok: true } | { ok: false; error: string };
-  signup: (data: { name: string; email: string; phone?: string; password: string; role: Role }) =>
-    | { ok: true }
-    | { ok: false; error: string };
-  logout: () => void;
+  login: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  signup: (data: {
+    name: string;
+    email: string;
+    phone?: string;
+    password: string;
+    role: Role;
+  }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  logout: () => Promise<void>;
 }
-
-const USERS_KEY = "zerra:users";
-const SESSION_KEY = "zerra:session";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const getUsers = (): StoredUser[] => {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-};
-const saveUsers = (users: StoredUser[]) => localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<SbUser | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // CRITICAL: subscribe BEFORE getSession to avoid missing events
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      // ignore
-    }
-    setLoading(false);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      // Defer profile fetch to avoid deadlocks inside the callback
+      if (sess?.user) {
+        setTimeout(() => fetchProfile(sess.user.id), 0);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session: sess } }) => {
+      setSession(sess);
+      setUser(sess?.user ?? null);
+      if (sess?.user) fetchProfile(sess.user.id);
+      setLoading(false);
+    });
+
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  const login: AuthContextValue["login"] = (email, password) => {
-    const e = email.trim().toLowerCase();
-    if (!e || !password) return { ok: false, error: "Email and password required" };
-    const users = getUsers();
-    const u = users.find((x) => x.email.toLowerCase() === e);
-    if (!u) return { ok: false, error: "No account found with this email" };
-    if (u.password !== password) return { ok: false, error: "Incorrect password" };
-    const { password: _p, ...safe } = u;
-    setUser(safe);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(safe));
-    return { ok: true };
+  const fetchProfile = async (userId: string) => {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    setProfile((data as ProfileRow | null) ?? null);
   };
 
-  const signup: AuthContextValue["signup"] = ({ name, email, phone, password, role }) => {
-    const e = email.trim().toLowerCase();
-    if (!name.trim()) return { ok: false, error: "Name required" };
-    if (!/^\S+@\S+\.\S+$/.test(e)) return { ok: false, error: "Invalid email address" };
-    if (password.length < 6) return { ok: false, error: "Password must be 6+ characters" };
-    const users = getUsers();
-    if (users.some((x) => x.email.toLowerCase() === e)) {
-      return { ok: false, error: "An account with this email already exists" };
-    }
-    const newUser: StoredUser = {
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      email: e,
-      phone: phone?.trim(),
-      role,
+  const login: AuthContextValue["login"] = async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
       password,
-    };
-    saveUsers([...users, newUser]);
-    const { password: _p, ...safe } = newUser;
-    setUser(safe);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(safe));
+    });
+    if (error) return { ok: false, error: error.message };
     return { ok: true };
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem(SESSION_KEY);
+  const signup: AuthContextValue["signup"] = async ({ name, email, phone, password, role }) => {
+    if (!name.trim()) return { ok: false, error: "Name required" };
+    if (password.length < 6) return { ok: false, error: "Password must be 6+ characters" };
+
+    const { error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+        data: { name: name.trim(), phone: phone?.trim() ?? null, role },
+      },
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, profile, session, loading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

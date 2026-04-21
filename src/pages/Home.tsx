@@ -4,6 +4,7 @@ import FoodCard from "@/components/FoodCard";
 import Chip from "@/components/Chip";
 import { Category } from "@/types/food";
 import { Flame, Award } from "lucide-react";
+import { useAllFoods } from "@/hooks/useMyPosts";
 
 const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
 const sorts = ["Newest", "Expiry Soon", "Quantity High", "Price Low"] as const;
@@ -11,12 +12,13 @@ const sorts = ["Newest", "Expiry Soon", "Quantity High", "Price Low"] as const;
 export default function Home() {
   const [activeCats, setActiveCats] = useState<Category[]>([]);
   const [sort, setSort] = useState<(typeof sorts)[number]>("Newest");
+  const { foods: dbFoods } = useAllFoods();
 
   const toggleCat = (c: Category) =>
     setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const list = useMemo(() => {
-    let arr = [...mockFoods];
+    let arr = [...dbFoods, ...mockFoods];
     if (activeCats.length) arr = arr.filter((f) => activeCats.includes(f.category));
     switch (sort) {
       case "Expiry Soon": arr.sort((a,b) => a.expiryHours - b.expiryHours); break;
@@ -24,7 +26,7 @@ export default function Home() {
       case "Price Low": arr.sort((a,b) => a.price - b.price); break;
     }
     return arr;
-  }, [activeCats, sort]);
+  }, [activeCats, sort, dbFoods]);
 
   return (
     <div className="px-4 py-5 space-y-5">
@@ -33,7 +35,6 @@ export default function Home() {
         <p className="text-sm text-muted-foreground">Rescue meals near you, today.</p>
       </div>
 
-      {/* Streak banner */}
       <div className="bg-hero p-4 rounded-2xl flex items-center justify-between shadow-soft">
         <div className="flex items-center gap-3">
           <Flame className="w-6 h-6 text-urgent" />
@@ -45,7 +46,6 @@ export default function Home() {
         <Award className="w-6 h-6 text-primary-deep" />
       </div>
 
-      {/* Sort */}
       <div className="flex items-center gap-2">
         <label className="text-xs font-bold text-muted-foreground uppercase">Sort:</label>
         <select
@@ -57,7 +57,6 @@ export default function Home() {
         </select>
       </div>
 
-      {/* Filter chips */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
         {categories.map((c) => (
           <Chip key={c} label={c} active={activeCats.includes(c)} onClick={() => toggleCat(c)} />
