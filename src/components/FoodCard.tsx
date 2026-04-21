@@ -25,7 +25,6 @@ export default function FoodCard({ food }: { food: FoodItem }) {
           alt={food.name} 
           className="w-full h-44 object-cover" 
           loading="lazy" 
-          onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
         />
         <span className={`absolute top-3 right-3 badge-pill ${statusStyles[food.status]}`}>
           {food.status}

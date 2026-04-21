@@ -1,24 +1,52 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { mockFoods } from "@/data/mockFoods";
 import FoodCard from "@/components/FoodCard";
 import Chip from "@/components/Chip";
 import { Category } from "@/types/food";
-import { Flame, Award } from "lucide-react";
+import { Flame, Award, MapPin } from "lucide-react";
 import { useAllFoods } from "@/hooks/useMyPosts";
 
 const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
 const sorts = ["Newest", "Expiry Soon", "Quantity High", "Price Low"] as const;
 
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
 export default function Home() {
   const [activeCats, setActiveCats] = useState<Category[]>([]);
   const [sort, setSort] = useState<(typeof sorts)[number]>("Newest");
   const { foods: dbFoods } = useAllFoods();
+  const [userLoc, setUserLoc] = useState<{lat: number, lng: number} | null>(null);
+  const [locError, setLocError] = useState("");
+
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => setLocError("Location access denied. Showing all foods.")
+      );
+    }
+  }, []);
 
   const toggleCat = (c: Category) =>
     setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const list = useMemo(() => {
     let arr = [...dbFoods];
+    
+    // Auto filter by 50km distance if location is available
+    if (userLoc) {
+      arr = arr.filter(f => calculateDistance(userLoc.lat, userLoc.lng, f.lat, f.lng) <= 50);
+    }
+
     if (activeCats.length) arr = arr.filter((f) => activeCats.includes(f.category));
     switch (sort) {
       case "Expiry Soon": arr.sort((a,b) => a.expiryHours - b.expiryHours); break;
@@ -26,7 +54,7 @@ export default function Home() {
       case "Price Low": arr.sort((a,b) => a.price - b.price); break;
     }
     return arr;
-  }, [activeCats, sort, dbFoods]);
+  }, [activeCats, sort, dbFoods, userLoc]);
 
   return (
     <div className="px-4 py-5 space-y-5">
@@ -56,6 +84,17 @@ export default function Home() {
           {sorts.map((s) => <option key={s}>{s}</option>)}
         </select>
       </div>
+
+      {userLoc && (
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-primary-deep bg-primary/10 p-2 rounded-xl">
+          <MapPin className="w-4 h-4" /> Showing items within 50km
+        </div>
+      )}
+      {locError && (
+        <div className="text-xs font-semibold text-warning bg-warning/10 p-2 rounded-xl">
+          {locError}
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
         {categories.map((c) => (

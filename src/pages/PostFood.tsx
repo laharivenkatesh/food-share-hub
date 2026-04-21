@@ -20,11 +20,11 @@ export default function PostFood() {
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [preparedAt, setPreparedAt] = useState("");
-  const [expiryHours, setExpiryHours] = useState("4");
+  const [expiryHours, setExpiryHours] = useState("");
   const [address, setAddress] = useState("");
-  const [lat, setLat] = useState("12.9716");
-  const [lng, setLng] = useState("77.5946");
-  const [feeds, setFeeds] = useState("4");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [feeds, setFeeds] = useState("");
   const [category, setCategory] = useState<Category>("Veg");
   const [purpose, setPurpose] = useState<Purpose>("humans");
   const [safe, setSafe] = useState(true);
@@ -140,6 +140,10 @@ export default function PostFood() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
+                if (file.size > 2 * 1024 * 1024) {
+                  toast.error("Image must be smaller than 2MB");
+                  return;
+                }
                 const reader = new FileReader();
                 reader.onloadend = () => {
                   setImage(reader.result as string);

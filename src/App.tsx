@@ -11,6 +11,7 @@ import Home from "./pages/Home";
 import FoodDetail from "./pages/FoodDetail";
 import PostFood from "./pages/PostFood";
 import Activity from "./pages/Activity";
+import NGOs from "./pages/NGOs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
                 <Route path="/food/:id" element={<RequireAuth><FoodDetail /></RequireAuth>} />
                 <Route path="/post" element={<RequireAuth><PostFood /></RequireAuth>} />
                 <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
+                <Route path="/ngos" element={<RequireAuth><NGOs /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Layout>
