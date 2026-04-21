@@ -53,9 +53,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Get the current session on mount — Supabase persists this in localStorage
-    // automatically, so the user stays logged in across page refreshes and
-    // app restarts until they manually sign out.
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -66,7 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // Listen for auth state changes (login, logout, token refresh)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -84,9 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ---------------------------------------------------------------------------
   // login
-  // ---------------------------------------------------------------------------
   const login: AuthContextValue["login"] = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
@@ -97,9 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true };
   };
 
-  // ---------------------------------------------------------------------------
-  // signup — creates Supabase Auth user then inserts a profiles row
-  // ---------------------------------------------------------------------------
+  // signup — ONLY create auth user, let trigger handle profile
   const signup: AuthContextValue["signup"] = async ({
     name,
     email,
@@ -111,39 +103,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (password.length < 6)
       return { ok: false, error: "Password must be 6+ characters" };
 
-    // 1. Create the Supabase Auth user
+    // Create the Supabase Auth user with metadata for the trigger
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
+      options: {
+        data: {
+          name: name.trim(),
+          phone: phone?.trim() || null,
+          role: role,
+        },
+      },
     });
 
     if (signUpError) return { ok: false, error: signUpError.message };
     if (!data.user)
       return { ok: false, error: "Signup failed — please try again." };
 
-    // 2. Insert the public profile row
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: data.user.id,
-      name: name.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone?.trim() || null,
-      role,
-    });
-
-    if (profileError) {
-      console.error("Profile insert error:", profileError);
-      return {
-        ok: false,
-        error: "Account created but profile save failed: " + profileError.message,
-      };
-    }
+    // DO NOT insert profile here - the trigger will do it automatically!
+    // Just wait a moment for the trigger to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     return { ok: true };
   };
 
-  // ---------------------------------------------------------------------------
   // logout
-  // ---------------------------------------------------------------------------
   const logout = async () => {
     await supabase.auth.signOut();
   };
