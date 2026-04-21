@@ -3,13 +3,10 @@ import { FoodItem } from "@/types/food";
 import { useAuth } from "./useAuth";
 import { supabase } from "@/lib/supabase";
 
-// Helper: resolve image URL - if it's a Supabase storage path, get the public URL
 function resolveImageUrl(image: string | null | undefined): string {
   const fallback = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80";
   if (!image) return fallback;
-  // If it's already a full URL (http/https/data:), use it directly
   if (image.startsWith("http") || image.startsWith("data:")) return image;
-  // If it's a Supabase storage path, get the public URL
   const { data } = supabase.storage.from("food-images").getPublicUrl(image);
   return data?.publicUrl || fallback;
 }
@@ -40,7 +37,7 @@ function mapRow(row: any): FoodItem {
     confidence: "High",
     reviews: [],
     provider: {
-      id: row.profiles?.id || "unknown",
+      id: row.profiles?.id || row.user_id,
       name: row.profiles?.name || "Unknown User",
       trustScore: 4.5,
       badges: ["Community Member"],
@@ -65,7 +62,7 @@ export function useMyPosts() {
 
     const { data, error } = await supabase
       .from("foods")
-      .select("*, profiles:user_id(*)")
+      .select("*, profiles!foods_user_id_profiles_fkey(*)")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -92,7 +89,7 @@ export function useMyPosts() {
         .insert({
           user_id: user.id,
           name: input.name,
-          image: input.image, // base64 or URL stored directly
+          image: input.image,
           feeds: input.feeds,
           price: input.price,
           expiry_hours: input.expiry_hours,
@@ -110,7 +107,7 @@ export function useMyPosts() {
           notes: input.notes,
           allow_split: input.allow_split,
         })
-        .select("*, profiles:user_id(*)")
+        .select("*, profiles!foods_user_id_profiles_fkey(*)")
         .single();
 
       if (error) {
@@ -149,7 +146,7 @@ export function useAllFoods() {
     setLoading(true);
     const { data, error } = await supabase
       .from("foods")
-      .select("*, profiles:user_id(*)")
+      .select("*, profiles!foods_user_id_profiles_fkey(*)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -165,7 +162,6 @@ export function useAllFoods() {
   useEffect(() => {
     refresh();
 
-    // Real-time subscription so friend's posts appear immediately
     const channel = supabase
       .channel("foods-realtime")
       .on(

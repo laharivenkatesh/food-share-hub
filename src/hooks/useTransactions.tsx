@@ -1,20 +1,22 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "./useAuth";
 
-export type TransactionStatus = "floating" | "completed" | "cancelled";
+export type TransactionStatus = "pending" | "accepted" | "completed" | "cancelled";
 
 export interface Transaction {
   id: string;
-  foodId: string;
-  donorId: string;
-  collectorId: string;
+  food_id: string;
+  donor_id: string;
+  collector_id: string;
   status: TransactionStatus;
-  donorAccepted: boolean;
-  collectorAccepted: boolean;
-  createdAt: string;
+  donor_accepted: boolean;
+  collector_accepted: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
-interface UserStats {
+export interface UserStats {
   mealsCollected: number;
   animalsFed: number;
   postsMade: number;
@@ -25,133 +27,182 @@ interface UserStats {
 interface TransactionContextValue {
   transactions: Transaction[];
   userStats: UserStats;
-  requestFood: (foodId: string, donorId: string) => void;
-  markCollected: (foodId: string) => void;
-  markDonated: (foodId: string) => void;
+  loading: boolean;
+  requestFood: (foodId: string, donorId: string) => Promise<void>;
+  markCollected: (foodId: string) => Promise<void>;
+  markDonated: (foodId: string) => Promise<void>;
   getTransactionForFood: (foodId: string) => Transaction | undefined;
+  refreshTransactions: () => Promise<void>;
 }
 
 const TransactionContext = createContext<TransactionContextValue | null>(null);
 
 export function TransactionProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [userStats, setUserStats] = useState<UserStats>({
+    mealsCollected: 0,
+    animalsFed: 0,
+    postsMade: 0,
+    pickupSuccess: 0,
+    badges: []
+  });
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("zerra_transactions");
-    if (stored) {
-      try {
-        setTransactions(JSON.parse(stored));
-      } catch {
-        setTransactions([]);
-      }
+  const fetchTransactions = useCallback(async () => {
+    if (!user) {
+      setTransactions([]);
+      setLoading(false);
+      return;
     }
-  }, []);
 
-  const saveTransactions = (newTransactions: Transaction[]) => {
-    setTransactions(newTransactions);
-    localStorage.setItem("zerra_transactions", JSON.stringify(newTransactions));
-  };
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("*")
+      .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`)
+      .order("created_at", { ascending: false });
 
-  const requestFood = (foodId: string, donorId: string) => {
+    if (error) {
+      console.error("Error fetching transactions:", error);
+    } else {
+      setTransactions(data || []);
+    }
+    setLoading(false);
+  }, [user]);
+
+  const computeStats = useCallback(async () => {
     if (!user) return;
-    
-    // Prevent multiple requests for the same food by the same user
-    if (transactions.find(t => t.foodId === foodId && t.status !== "cancelled")) return;
 
-    const newTx: Transaction = {
-      id: "tx_" + Math.random().toString(36).substring(2, 9),
-      foodId,
-      donorId,
-      collectorId: user.id,
-      status: "floating",
-      donorAccepted: false,
-      collectorAccepted: false,
-      createdAt: new Date().toISOString(),
-    };
-    saveTransactions([...transactions, newTx]);
-  };
+    const { data: completedTxs } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("status", "completed")
+      .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`);
 
-  const updateTransaction = (foodId: string, updates: Partial<Transaction>) => {
-    let updatedTx: Transaction | undefined;
-    const newTransactions = transactions.map(t => {
-      if (t.foodId === foodId && t.status === "floating") {
-        updatedTx = { ...t, ...updates };
-        // Check if both accepted
-        if (updatedTx.donorAccepted && updatedTx.collectorAccepted) {
-          updatedTx.status = "completed";
-        }
-        return updatedTx;
-      }
-      return t;
-    });
-    saveTransactions(newTransactions);
-  };
+    const completed = completedTxs || [];
 
-  const markCollected = (foodId: string) => {
-    updateTransaction(foodId, { collectorAccepted: true });
-  };
+    const mealsCollected = completed.filter(t => t.collector_id === user.id).length * 5;
+    const postsMade = completed.filter(t => t.donor_id === user.id).length;
 
-  const markDonated = (foodId: string) => {
-    updateTransaction(foodId, { donorAccepted: true });
-  };
+    const { data: allTxs } = await supabase
+      .from("transactions")
+      .select("*")
+      .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`);
 
-  const getTransactionForFood = (foodId: string) => {
-    return transactions.find(t => t.foodId === foodId && t.status !== "cancelled");
-  };
-
-  // Calculate stats based on completed transactions
-  const computeStats = (): UserStats => {
-    if (!user) return { mealsCollected: 0, animalsFed: 0, postsMade: 0, pickupSuccess: 0, badges: [] };
-
-    let mealsCollected = 0;
-    let animalsFed = 0; // Mock increment if they fed animals. Let's say 2 animals per animal-food transaction.
-    let postsMade = 0; // In a real app, this comes from food posts. Here we count completed donations.
-    let successfulTransactions = 0;
-    let totalInvolved = 0;
-
-    transactions.forEach(t => {
-      if (t.collectorId === user.id) {
-        totalInvolved++;
-        if (t.status === "completed") {
-          successfulTransactions++;
-          mealsCollected += 5; // Assuming avg 5 meals per collection
-        }
-      }
-      if (t.donorId === user.id) {
-        totalInvolved++;
-        if (t.status === "completed") {
-          successfulTransactions++;
-          postsMade++;
-        }
-      }
-    });
-
-    const pickupSuccess = totalInvolved === 0 ? 0 : Math.round((successfulTransactions / totalInvolved) * 100);
+    const total = allTxs?.length || 0;
+    const pickupSuccess = total === 0 ? 0 : Math.round((completed.length / total) * 100);
 
     const badges: { icon: string; text: string }[] = [];
     if (postsMade > 0) badges.push({ icon: "🪴", text: "Consistent Provider" });
     if (mealsCollected > 0) badges.push({ icon: "💛", text: "Regular Helper" });
-    if (pickupSuccess >= 90 && successfulTransactions > 0) badges.push({ icon: "🏆", text: "Top Contributor" });
+    if (pickupSuccess >= 90 && completed.length > 0) badges.push({ icon: "🏆", text: "Top Contributor" });
     if (mealsCollected > 10) badges.push({ icon: "⚡", text: "Quick Rescuer" });
 
-    return {
+    setUserStats({
       mealsCollected,
-      animalsFed,
+      animalsFed: 0,
       postsMade,
       pickupSuccess,
       badges
-    };
+    });
+  }, [user]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  useEffect(() => {
+    computeStats();
+  }, [transactions, computeStats]);
+
+  const requestFood = async (foodId: string, donorId: string) => {
+    if (!user) return;
+
+    const existing = transactions.find(t => t.food_id === foodId && t.status !== "cancelled");
+    if (existing) return;
+
+    const { error } = await supabase.from("transactions").insert({
+      food_id: foodId,
+      donor_id: donorId,
+      collector_id: user.id,
+      status: "pending",
+      donor_accepted: false,
+      collector_accepted: false,
+    });
+
+    if (error) {
+      console.error("Error requesting food:", error);
+    } else {
+      await fetchTransactions();
+    }
+  };
+
+  const markCollected = async (foodId: string) => {
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("food_id", foodId)
+      .single();
+
+    if (!tx) return;
+
+    const newCollectorAccepted = true;
+    const newStatus = tx.donor_accepted && newCollectorAccepted ? "completed" : "accepted";
+
+    const { error } = await supabase
+      .from("transactions")
+      .update({
+        collector_accepted: newCollectorAccepted,
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq("food_id", foodId);
+
+    if (!error) {
+      await fetchTransactions();
+    }
+  };
+
+  const markDonated = async (foodId: string) => {
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("*")
+      .eq("food_id", foodId)
+      .single();
+
+    if (!tx) return;
+
+    const newDonorAccepted = true;
+    const newStatus = newDonorAccepted && tx.collector_accepted ? "completed" : "accepted";
+
+    const { error } = await supabase
+      .from("transactions")
+      .update({
+        donor_accepted: newDonorAccepted,
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq("food_id", foodId);
+
+    if (!error) {
+      await fetchTransactions();
+    }
+  };
+
+  const getTransactionForFood = (foodId: string) => {
+    return transactions.find(t => t.food_id === foodId && t.status !== "cancelled");
   };
 
   return (
-    <TransactionContext.Provider value={{ 
-      transactions, 
-      userStats: computeStats(), 
-      requestFood, 
-      markCollected, 
-      markDonated, 
-      getTransactionForFood 
+    <TransactionContext.Provider value={{
+      transactions,
+      userStats,
+      loading,
+      requestFood,
+      markCollected,
+      markDonated,
+      getTransactionForFood,
+      refreshTransactions: fetchTransactions
     }}>
       {children}
     </TransactionContext.Provider>

@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
+import type { Session, User } from "@supabase/supabase-js";
 
 export type Role = "Student" | "Provider" | "NGO";
 
@@ -11,15 +13,10 @@ export interface MockProfile {
   created_at: string;
 }
 
-// Internal type that includes password — never leaves this module
-interface StoredUser extends MockProfile {
-  password: string;
-}
-
 interface AuthContextValue {
-  user: { id: string; email: string } | null;
+  user: User | null;
   profile: MockProfile | null;
-  session: { access_token: string } | null;
+  session: Session | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   signup: (data: {
@@ -34,75 +31,75 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ---------------------------------------------------------------------------
-// In-memory user registry — lives only for the lifetime of the browser tab.
-// Passwords are NEVER persisted to any storage. The session (profile without
-// password) is kept in localStorage so the user stays logged in across
-// page refreshes and app restarts until they manually sign out.
-// ---------------------------------------------------------------------------
-const inMemoryUsers: StoredUser[] = [];
-
-const SESSION_KEY = "zerra_session";
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<{ access_token: string } | null>(null);
-  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<MockProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Restore session from localStorage on mount (no user data — just the
-    // public profile stored when the user last logged in / signed up).
-    const stored = localStorage.getItem(SESSION_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as MockProfile;
-        setSession({ access_token: "mock_token" });
-        setUser({ id: parsed.id, email: parsed.email });
-        setProfile(parsed);
-      } catch {
-        localStorage.removeItem(SESSION_KEY);
-      }
-    }
-    setLoading(false);
-  }, []);
+  // Fetch profile row from the profiles table
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
 
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
-  const persistSession = (p: MockProfile) => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(p));
-    setSession({ access_token: "mock_token" });
-    setUser({ id: p.id, email: p.email });
-    setProfile(p);
+    if (error) {
+      console.error("fetchProfile error:", error);
+      return null;
+    }
+    return data as MockProfile;
   };
 
-  // -------------------------------------------------------------------------
+  useEffect(() => {
+    // Get the current session on mount — Supabase persists this in localStorage
+    // automatically, so the user stays logged in across page refreshes and
+    // app restarts until they manually sign out.
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const p = await fetchProfile(session.user.id);
+        setProfile(p);
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth state changes (login, logout, token refresh)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const p = await fetchProfile(session.user.id);
+        setProfile(p);
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // login
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   const login: AuthContextValue["login"] = async (email, password) => {
-    const found = inMemoryUsers.find(
-      (u) =>
-        u.email.toLowerCase() === email.trim().toLowerCase() &&
-        u.password === password
-    );
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
 
-    if (!found) {
-      return {
-        ok: false,
-        error:
-          "Invalid email or password. Note: accounts are session-only — please sign up again if you refreshed the page.",
-      };
-    }
-
-    const { password: _pw, ...publicProfile } = found;
-    persistSession(publicProfile);
+    if (error) return { ok: false, error: error.message };
     return { ok: true };
   };
 
-  // -------------------------------------------------------------------------
-  // signup
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // signup — creates Supabase Auth user then inserts a profiles row
+  // ---------------------------------------------------------------------------
   const signup: AuthContextValue["signup"] = async ({
     name,
     email,
@@ -114,42 +111,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (password.length < 6)
       return { ok: false, error: "Password must be 6+ characters" };
 
-    const emailExists = inMemoryUsers.some(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-    );
-    if (emailExists) return { ok: false, error: "Email is already registered" };
+    // 1. Create the Supabase Auth user
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+    });
 
-    if (phone?.trim()) {
-      const phoneExists = inMemoryUsers.some((u) => u.phone === phone.trim());
-      if (phoneExists)
-        return { ok: false, error: "Phone number is already registered" };
-    }
+    if (signUpError) return { ok: false, error: signUpError.message };
+    if (!data.user)
+      return { ok: false, error: "Signup failed — please try again." };
 
-    const newUser: StoredUser = {
-      id: "usr_" + Math.random().toString(36).substring(2, 9),
+    // 2. Insert the public profile row
+    const { error: profileError } = await supabase.from("profiles").insert({
+      id: data.user.id,
       name: name.trim(),
       email: email.trim().toLowerCase(),
       phone: phone?.trim() || null,
       role,
-      created_at: new Date().toISOString(),
-      password, // stored only in memory
-    };
+    });
 
-    inMemoryUsers.push(newUser);
+    if (profileError) {
+      console.error("Profile insert error:", profileError);
+      return {
+        ok: false,
+        error: "Account created but profile save failed: " + profileError.message,
+      };
+    }
 
-    const { password: _pw, ...publicProfile } = newUser;
-    persistSession(publicProfile);
     return { ok: true };
   };
 
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // logout
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   const logout = async () => {
-    localStorage.removeItem(SESSION_KEY);
-    setSession(null);
-    setUser(null);
-    setProfile(null);
+    await supabase.auth.signOut();
   };
 
   return (

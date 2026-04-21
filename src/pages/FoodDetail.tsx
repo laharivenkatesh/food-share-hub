@@ -3,12 +3,13 @@ import { useAllFoods } from "@/hooks/useMyPosts";
 import MapPreview, { openInGoogleMaps } from "@/components/MapPreview";
 import ReviewSection from "@/components/ReviewSection";
 import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { RealtimeStatus } from "@/types/food";
 import { useAuth } from "@/hooks/useAuth";
 import { useTransactions } from "@/hooks/useTransactions";
 import LiveCountdown from "@/components/LiveCountdown";
+import { supabase } from "@/lib/supabase";
 
 const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "Not Available"];
 
@@ -17,45 +18,56 @@ export default function FoodDetail() {
   const nav = useNavigate();
   const { user } = useAuth();
   const { getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
-  
+
   const { foods } = useAllFoods();
   const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>(food?.realtimeStatus || "Still Available");
+  const [oppositeProfile, setOppositeProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchOppositeProfile = async () => {
+      const tx = getTransactionForFood(id || "");
+      if (tx && user) {
+        const isDonorCheck = user?.id === food?.provider.id;
+        const profileId = isDonorCheck ? tx.collector_id : tx.donor_id;
+        if (profileId) {
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", profileId)
+            .single();
+          setOppositeProfile(data);
+        }
+      }
+    };
+    fetchOppositeProfile();
+  }, [id, user, food, getTransactionForFood]);
 
   if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
 
   const tx = getTransactionForFood(food.id);
   const isDonor = user?.id === food.provider.id;
-  const isCollector = tx?.collectorId === user?.id;
+  const isCollector = tx?.collector_id === user?.id;
   const isUrgent = food.expiryHours < 1;
   const isReserved = food.status === "reserved" && !tx;
 
-  const getProfileFromStorage = (userId: string) => {
-    const usersJson = localStorage.getItem("zerra_users") || "[]";
-    const users = JSON.parse(usersJson);
-    return users.find((u: any) => u.id === userId);
-  };
-
   const renderTransactionStatus = () => {
-    if (tx?.status === "completed" || tx?.status === "floating") {
-      const oppositeId = isDonor ? tx.collectorId : tx.donorId;
-      const oppositeProfile = oppositeId ? getProfileFromStorage(oppositeId) : null;
-
+    if (tx?.status === "completed" || tx?.status === "accepted" || tx?.status === "pending") {
       const ContactCard = () => (
         oppositeProfile ? (
           <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3 flex items-center gap-4">
-            <img 
-              src={food.image} 
-              alt={food.name} 
-              className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0" 
+            <img
+              src={food.image}
+              alt={food.name}
+              className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0"
               onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
             />
             <div>
               <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
                 {isDonor ? "Collector Details" : "Donor Details"}
               </p>
-              <p className="font-extrabold text-foreground text-lg">{oppositeProfile.name}</p>
-              <p className="text-sm font-bold text-primary-deep">{oppositeProfile.phone || "No phone provided"}</p>
+              <p className="font-extrabold text-foreground text-lg">{oppositeProfile?.name || "Loading..."}</p>
+              <p className="text-sm font-bold text-primary-deep">{oppositeProfile?.phone || "No phone provided"}</p>
             </div>
           </div>
         ) : null
@@ -72,9 +84,9 @@ export default function FoodDetail() {
         );
       }
 
-      // Floating status
+      // Pending/Accepted status
       if (isCollector) {
-        if (tx.collectorAccepted) {
+        if (tx.collector_accepted) {
           return (
             <div className="space-y-3">
               <ContactCard />
@@ -88,7 +100,7 @@ export default function FoodDetail() {
             <div className="p-3 bg-warning/15 text-warning font-bold rounded-xl text-center text-sm">
               You requested this food. Confirm when you collect it.
             </div>
-            <button onClick={() => { markCollected(food.id); toast.success("Marked as collected!"); }} className="btn-primary">
+            <button onClick={async () => { await markCollected(food.id); toast.success("Marked as collected!"); }} className="btn-primary">
               I Have Collected This
             </button>
           </div>
@@ -96,7 +108,7 @@ export default function FoodDetail() {
       }
 
       if (isDonor) {
-        if (tx.donorAccepted) {
+        if (tx.donor_accepted) {
           return (
             <div className="space-y-3">
               <ContactCard />
@@ -110,7 +122,7 @@ export default function FoodDetail() {
             <div className="p-3 bg-primary/15 text-primary-deep font-bold rounded-xl text-center text-sm">
               Someone has requested this. Confirm when you donate it.
             </div>
-            <button onClick={() => { markDonated(food.id); toast.success("Marked as donated!"); }} className="btn-primary">
+            <button onClick={async () => { await markDonated(food.id); toast.success("Marked as donated!"); }} className="btn-primary">
               I Have Donated This
             </button>
           </div>
@@ -123,22 +135,22 @@ export default function FoodDetail() {
     if (isDonor) {
       return <button disabled className="btn-secondary opacity-70">Waiting for requests...</button>;
     }
-    
+
     if (isReserved) {
       return <button disabled className="btn-secondary opacity-50">Already Reserved</button>;
     }
 
     return (
-      <button 
-        onClick={() => {
+      <button
+        onClick={async () => {
           if (!user) {
             toast.error("Please login to request food");
             nav("/auth");
             return;
           }
-          requestFood(food.id, food.provider.id); 
-          toast.success("Pickup requested! Provider notified."); 
-        }} 
+          await requestFood(food.id, food.provider.id);
+          toast.success("Pickup requested! Provider notified.");
+        }}
         className="btn-primary"
       >
         Request Pickup
@@ -149,13 +161,13 @@ export default function FoodDetail() {
   return (
     <div className="pb-6">
       <div className="relative">
-        <img 
-          src={food.image} 
-          alt={food.name} 
-          className="w-full h-64 object-cover" 
+        <img
+          src={food.image}
+          alt={food.name}
+          className="w-full h-64 object-cover"
           onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
         />
-        <button onClick={()=>nav(-1)} className="absolute top-4 left-4 w-10 h-10 rounded-full bg-card/90 backdrop-blur flex items-center justify-center shadow-soft">
+        <button onClick={() => nav(-1)} className="absolute top-4 left-4 w-10 h-10 rounded-full bg-card/90 backdrop-blur flex items-center justify-center shadow-soft">
           <ArrowLeft className="w-5 h-5" />
         </button>
       </div>
