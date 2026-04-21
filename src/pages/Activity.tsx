@@ -1,8 +1,10 @@
 import { Settings, Leaf } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useTransactions } from "@/hooks/useTransactions";
 
 export default function Activity() {
   const { profile } = useAuth();
+  const { userStats } = useTransactions();
 
   return (
     <div className="px-5 py-6 space-y-6 max-w-md mx-auto">
@@ -21,16 +23,16 @@ export default function Activity() {
             <Leaf className="w-8 h-8 text-primary-deep" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-primary-foreground">{profile?.name ?? "Aarav Sharma"}</h2>
+            <h2 className="text-xl font-bold text-primary-foreground">{profile?.name ?? "Guest"}</h2>
             <p className="text-sm text-primary-foreground/80 font-semibold mt-0.5 flex items-center gap-1">
-              Provider <span className="text-xs">•</span> <span><span className="text-amber-500">⭐️</span> 4.8 Trust Score</span>
+              {profile?.role ?? "User"} <span className="text-xs">•</span> <span><span className="text-amber-500">⭐️</span> 5.0 Trust Score</span>
             </p>
           </div>
         </div>
 
         <div className="bg-card/90 backdrop-blur-md rounded-[20px] py-3 px-4 flex items-center justify-between shadow-sm relative z-10">
           <div className="flex items-center gap-2 font-bold text-sm text-foreground">
-            <span>🔥</span> 5 Day Streak
+            <span>🔥</span> 1 Day Streak
           </div>
           <span className="text-xs text-muted-foreground font-bold">Keep it going!</span>
         </div>
@@ -38,21 +40,23 @@ export default function Activity() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
-        <StatCard value="42" label="Meals Collected" />
-        <StatCard value="118" label="Animals Fed" />
-        <StatCard value="27" label="Posts Made" />
-        <StatCard value="96%" label="Pickup Success" />
+        <StatCard value={userStats.mealsCollected.toString()} label="Meals Collected" />
+        <StatCard value={userStats.animalsFed.toString()} label="Animals Fed" />
+        <StatCard value={userStats.postsMade.toString()} label="Posts Made" />
+        <StatCard value={`${userStats.pickupSuccess}%`} label="Pickup Success" />
       </div>
 
       {/* Badges */}
       <div className="space-y-4 pt-2">
         <h3 className="text-xl font-extrabold font-serif text-foreground">Badges</h3>
         <div className="flex flex-wrap gap-2.5">
-          <Badge icon="🪴" text="Consistent Provider" />
-          <Badge icon="🍱" text="Food Saver" />
-          <Badge icon="🏆" text="Top Contributor" />
-          <Badge icon="⚡" text="Quick Rescuer" />
-          <Badge icon="💛" text="Regular Helper" />
+          {userStats.badges.length > 0 ? (
+            userStats.badges.map(b => (
+              <Badge key={b.text} icon={b.icon} text={b.text} />
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground font-bold">Complete transactions to earn badges!</p>
+          )}
         </div>
       </div>
     </div>

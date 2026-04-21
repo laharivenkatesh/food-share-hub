@@ -2,23 +2,101 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { mockFoods } from "@/data/mockFoods";
 import MapPreview, { openInGoogleMaps } from "@/components/MapPreview";
 import ReviewSection from "@/components/ReviewSection";
-import { ArrowLeft, Navigation, Star, Award, Flame } from "lucide-react";
+import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { RealtimeStatus } from "@/types/food";
+import { useAuth } from "@/hooks/useAuth";
+import { useTransactions } from "@/hooks/useTransactions";
 
 const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "Not Available"];
 
 export default function FoodDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
+  const { getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
+  
   const food = mockFoods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>(food?.realtimeStatus || "Still Available");
 
   if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
 
+  const tx = getTransactionForFood(food.id);
+  const isDonor = user?.id === food.provider.id;
+  const isCollector = tx?.collectorId === user?.id;
   const isUrgent = food.expiryHours < 1;
-  const isReserved = food.status === "reserved";
+  const isReserved = food.status === "reserved" && !tx;
+
+  const renderTransactionStatus = () => {
+    if (tx?.status === "completed") {
+      return (
+        <div className="bg-success/15 border border-success text-success p-4 rounded-2xl flex items-center justify-center gap-2 font-bold">
+          <CheckCircle2 className="w-5 h-5" /> Transaction Completed
+        </div>
+      );
+    }
+
+    if (tx?.status === "floating") {
+      if (isCollector) {
+        if (tx.collectorAccepted) {
+          return <button disabled className="btn-secondary opacity-70">Waiting for donor to confirm...</button>;
+        }
+        return (
+          <div className="space-y-3">
+            <div className="p-3 bg-warning/15 text-warning font-bold rounded-xl text-center text-sm">
+              You requested this food. Confirm when you collect it.
+            </div>
+            <button onClick={() => { markCollected(food.id); toast.success("Marked as collected!"); }} className="btn-primary">
+              I Have Collected This
+            </button>
+          </div>
+        );
+      }
+      if (isDonor) {
+        if (tx.donorAccepted) {
+          return <button disabled className="btn-secondary opacity-70">Waiting for collector to confirm...</button>;
+        }
+        return (
+          <div className="space-y-3">
+            <div className="p-3 bg-primary/15 text-primary-deep font-bold rounded-xl text-center text-sm">
+              Someone has requested this. Confirm when you donate it.
+            </div>
+            <button onClick={() => { markDonated(food.id); toast.success("Marked as donated!"); }} className="btn-primary">
+              I Have Donated This
+            </button>
+          </div>
+        );
+      }
+      return <button disabled className="btn-secondary opacity-50">Reserved by another user</button>;
+    }
+
+    // Available
+    if (isDonor) {
+      return <button disabled className="btn-secondary opacity-70">Waiting for requests...</button>;
+    }
+    
+    if (isReserved) {
+      return <button disabled className="btn-secondary opacity-50">Already Reserved</button>;
+    }
+
+    return (
+      <button 
+        onClick={() => {
+          if (!user) {
+            toast.error("Please login to request food");
+            nav("/auth");
+            return;
+          }
+          requestFood(food.id, food.provider.id); 
+          toast.success("Pickup requested! Provider notified."); 
+        }} 
+        className="btn-primary"
+      >
+        Request Pickup
+      </button>
+    );
+  };
 
   return (
     <div className="pb-6">
@@ -113,16 +191,8 @@ export default function FoodDetail() {
           </div>
         )}
 
-        {isReserved ? (
-          <div className="space-y-2">
-            <button disabled className="btn-primary">Already Reserved</button>
-            <p className="text-center text-xs text-warning font-semibold">⚠️ This item is already reserved by another user</p>
-          </div>
-        ) : (
-          <button onClick={() => toast.success("Pickup requested! Provider notified.")} className="btn-primary">
-            Request Pickup
-          </button>
-        )}
+        {/* Transaction Flow Buttons */}
+        {renderTransactionStatus()}
 
         <ReviewSection initial={food.reviews} />
       </div>

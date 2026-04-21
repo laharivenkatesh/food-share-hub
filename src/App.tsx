@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "./components/Layout";
 import RequireAuth from "./components/RequireAuth";
 import { AuthProvider } from "./hooks/useAuth";
+import { TransactionProvider } from "./hooks/useTransactions";
 import Auth from "./pages/Auth";
 import Home from "./pages/Home";
 import FoodDetail from "./pages/FoodDetail";
@@ -20,16 +21,18 @@ const App = () => (
       <Sonner position="top-center" />
       <BrowserRouter>
         <AuthProvider>
-          <Layout>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
-              <Route path="/food/:id" element={<RequireAuth><FoodDetail /></RequireAuth>} />
-              <Route path="/post" element={<RequireAuth><PostFood /></RequireAuth>} />
-              <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Layout>
+          <TransactionProvider>
+            <Layout>
+              <Routes>
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+                <Route path="/food/:id" element={<RequireAuth><FoodDetail /></RequireAuth>} />
+                <Route path="/post" element={<RequireAuth><PostFood /></RequireAuth>} />
+                <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Layout>
+          </TransactionProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

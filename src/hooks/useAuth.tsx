@@ -1,13 +1,21 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import type { Session, User as SbUser } from "@supabase/supabase-js";
-import { supabase, ProfileRow } from "@/lib/supabase";
 
 export type Role = "Student" | "Provider" | "NGO";
 
+export interface MockProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: Role;
+  created_at: string;
+  password?: string;
+}
+
 interface AuthContextValue {
-  user: SbUser | null;
-  profile: ProfileRow | null;
-  session: Session | null;
+  user: { id: string; email: string } | null;
+  profile: MockProfile | null;
+  session: { access_token: string } | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   signup: (data: {
@@ -23,45 +31,44 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<SbUser | null>(null);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [session, setSession] = useState<{ access_token: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+  const [profile, setProfile] = useState<MockProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // CRITICAL: subscribe BEFORE getSession to avoid missing events
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      // Defer profile fetch to avoid deadlocks inside the callback
-      if (sess?.user) {
-        setTimeout(() => fetchProfile(sess.user.id), 0);
-      } else {
-        setProfile(null);
+    // Load session from local storage on mount
+    const storedSession = localStorage.getItem("zerra_session");
+    if (storedSession) {
+      try {
+        const parsedProfile = JSON.parse(storedSession) as MockProfile;
+        setSession({ access_token: "mock_token" });
+        setUser({ id: parsedProfile.id, email: parsedProfile.email });
+        setProfile(parsedProfile);
+      } catch {
+        localStorage.removeItem("zerra_session");
       }
-    });
-
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) fetchProfile(sess.user.id);
-      setLoading(false);
-    });
-
-    return () => sub.subscription.unsubscribe();
+    }
+    setLoading(false);
   }, []);
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
-    setProfile((data as ProfileRow | null) ?? null);
-  };
-
   const login: AuthContextValue["login"] = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    });
-    if (error) return { ok: false, error: error.message };
+    const usersJson = localStorage.getItem("zerra_users") || "[]";
+    const users: MockProfile[] = JSON.parse(usersJson);
+    
+    const found = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password);
+    if (!found) {
+      return { ok: false, error: "Invalid email or password" };
+    }
+
+    const sessionProfile = { ...found };
+    delete sessionProfile.password;
+    
+    localStorage.setItem("zerra_session", JSON.stringify(sessionProfile));
+    setSession({ access_token: "mock_token" });
+    setUser({ id: sessionProfile.id, email: sessionProfile.email });
+    setProfile(sessionProfile);
+    
     return { ok: true };
   };
 
@@ -69,20 +76,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!name.trim()) return { ok: false, error: "Name required" };
     if (password.length < 6) return { ok: false, error: "Password must be 6+ characters" };
 
-    const { error } = await supabase.auth.signUp({
+    const usersJson = localStorage.getItem("zerra_users") || "[]";
+    const users: MockProfile[] = JSON.parse(usersJson);
+
+    const emailExists = users.some(u => u.email.toLowerCase() === email.trim().toLowerCase());
+    if (emailExists) {
+      return { ok: false, error: "Email is already registered" };
+    }
+
+    if (phone && phone.trim()) {
+      const phoneExists = users.some(u => u.phone === phone.trim());
+      if (phoneExists) {
+        return { ok: false, error: "Phone number is already registered" };
+      }
+    }
+
+    const newUser: MockProfile = {
+      id: "usr_" + Math.random().toString(36).substring(2, 9),
+      name: name.trim(),
       email: email.trim().toLowerCase(),
+      phone: phone?.trim() || null,
+      role,
+      created_at: new Date().toISOString(),
       password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: { name: name.trim(), phone: phone?.trim() ?? null, role },
-      },
-    });
-    if (error) return { ok: false, error: error.message };
+    };
+
+    users.push(newUser);
+    localStorage.setItem("zerra_users", JSON.stringify(users));
+
+    const sessionProfile = { ...newUser };
+    delete sessionProfile.password;
+
+    localStorage.setItem("zerra_session", JSON.stringify(sessionProfile));
+    setSession({ access_token: "mock_token" });
+    setUser({ id: sessionProfile.id, email: sessionProfile.email });
+    setProfile(sessionProfile);
+
     return { ok: true };
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem("zerra_session");
+    setSession(null);
+    setUser(null);
     setProfile(null);
   };
 
