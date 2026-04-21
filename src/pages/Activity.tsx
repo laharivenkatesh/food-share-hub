@@ -1,107 +1,77 @@
-import { useState } from "react";
-import { useMyPosts } from "@/hooks/useMyPosts";
-import { myClaims } from "@/data/mockFoods";
-import { FoodItem } from "@/types/food";
-import { MapPin, Clock, Award, Flame, Trash2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Settings, Leaf } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
-const statusStyles: Record<string, string> = {
-  available: "bg-success text-success-foreground",
-  reserved: "bg-warning text-warning-foreground",
-  collected: "bg-muted-foreground/30 text-foreground",
-};
-
 export default function Activity() {
-  const [tab, setTab] = useState<"posts" | "claims">("posts");
   const { profile } = useAuth();
-  const { posts, loading, removePost } = useMyPosts();
-  const list = tab === "posts" ? posts : myClaims;
 
   return (
-    <div className="px-4 py-5 space-y-5">
-      <h1 className="text-2xl font-extrabold tracking-tight">My Activity</h1>
+    <div className="px-5 py-6 space-y-6 max-w-md mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between pt-2">
+        <h1 className="text-3xl font-extrabold font-serif tracking-tight text-foreground">Profile</h1>
+        <button className="w-10 h-10 rounded-full bg-card flex items-center justify-center shadow-sm">
+          <Settings className="w-5 h-5 text-muted-foreground" />
+        </button>
+      </div>
 
-      <div className="card-soft p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="w-5 h-5 text-urgent" />
-            <span className="font-extrabold">{profile?.name ?? "Welcome"}</span>
+      {/* Main Card */}
+      <div className="bg-primary rounded-[32px] p-5 relative overflow-hidden shadow-soft">
+        <div className="flex items-center gap-4 mb-6 relative z-10">
+          <div className="w-16 h-16 rounded-[20px] bg-card flex items-center justify-center shadow-sm shrink-0">
+            <Leaf className="w-8 h-8 text-primary-deep" />
           </div>
-          <span className="text-xs text-muted-foreground">Role: {profile?.role ?? "—"}</span>
+          <div>
+            <h2 className="text-xl font-bold text-primary-foreground">{profile?.name ?? "Aarav Sharma"}</h2>
+            <p className="text-sm text-primary-foreground/80 font-semibold mt-0.5 flex items-center gap-1">
+              Provider <span className="text-xs">•</span> <span><span className="text-amber-500">⭐️</span> 4.8 Trust Score</span>
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {["Consistent Provider", "Food Saver", "Quick Rescuer"].map((b) => (
-            <span key={b} className="badge-pill bg-primary text-primary-foreground">
-              <Award className="w-3 h-3" /> {b}
-            </span>
-          ))}
+
+        <div className="bg-card/90 backdrop-blur-md rounded-[20px] py-3 px-4 flex items-center justify-between shadow-sm relative z-10">
+          <div className="flex items-center gap-2 font-bold text-sm text-foreground">
+            <span>🔥</span> 5 Day Streak
+          </div>
+          <span className="text-xs text-muted-foreground font-bold">Keep it going!</span>
         </div>
       </div>
 
-      <div className="flex bg-muted rounded-2xl p-1">
-        {(["posts", "claims"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold capitalize transition-all ${
-              tab === t ? "bg-card shadow-soft text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            My {t}
-          </button>
-        ))}
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard value="42" label="Meals Collected" />
+        <StatCard value="118" label="Animals Fed" />
+        <StatCard value="27" label="Posts Made" />
+        <StatCard value="96%" label="Pickup Success" />
       </div>
 
-      <div className="space-y-3">
-        {loading && tab === "posts" && <p className="text-center text-muted-foreground py-8">Loading…</p>}
-        {!loading && list.map((f) => (
-          <ActivityCard
-            key={f.id}
-            food={f}
-            onDelete={tab === "posts" ? () => removePost(f.id) : undefined}
-          />
-        ))}
-        {!loading && list.length === 0 && (
-          <p className="text-center text-muted-foreground py-8">
-            {tab === "posts" ? "You haven't posted any food yet." : "Nothing here yet."}
-          </p>
-        )}
+      {/* Badges */}
+      <div className="space-y-4 pt-2">
+        <h3 className="text-xl font-extrabold font-serif text-foreground">Badges</h3>
+        <div className="flex flex-wrap gap-2.5">
+          <Badge icon="🪴" text="Consistent Provider" />
+          <Badge icon="🍱" text="Food Saver" />
+          <Badge icon="🏆" text="Top Contributor" />
+          <Badge icon="⚡" text="Quick Rescuer" />
+          <Badge icon="💛" text="Regular Helper" />
+        </div>
       </div>
     </div>
   );
 }
 
-function ActivityCard({ food, onDelete }: { food: FoodItem; onDelete?: () => void }) {
+function StatCard({ value, label }: { value: string; label: string }) {
   return (
-    <div className="card-soft flex p-3 gap-3 hover:scale-[1.01] transition-transform relative">
-      <Link to={`/food/${food.id}`} className="flex flex-1 gap-3 min-w-0">
-        <img src={food.image} alt={food.name} className="w-20 h-20 rounded-xl object-cover" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-extrabold truncate">{food.name}</h3>
-            <span className={`badge-pill ${statusStyles[food.status]}`}>{food.status}</span>
-          </div>
-          <p className="text-sm font-bold text-foreground">
-            {food.price === 0 ? <span className="text-success">FREE</span> : `₹${food.price}`}
-          </p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-            <MapPin className="w-3 h-3" /> {food.address}
-          </p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="w-3 h-3" /> Posted {food.postedAt}
-          </p>
-        </div>
-      </Link>
-      {onDelete && (
-        <button
-          onClick={onDelete}
-          className="self-start text-destructive p-1.5 hover:bg-destructive/10 rounded-lg"
-          aria-label="Delete post"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
+    <div className="bg-card rounded-[24px] p-5 shadow-sm border border-border/50">
+      <div className="text-[28px] font-extrabold text-primary-deep mb-0.5">{value}</div>
+      <div className="text-[13px] text-muted-foreground font-bold leading-tight">{label}</div>
+    </div>
+  );
+}
+
+function Badge({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div className="bg-card px-3.5 py-2.5 rounded-full flex items-center gap-2 shadow-sm border border-border/50 text-sm font-extrabold text-foreground">
+      <span>{icon}</span> {text}
     </div>
   );
 }
