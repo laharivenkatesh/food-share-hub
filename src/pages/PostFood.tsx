@@ -1,10 +1,25 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, X } from "lucide-react";
+import { Camera, X, MapPin } from "lucide-react";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import iconUrl from "leaflet/dist/images/marker-icon.png";
+import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import Chip from "@/components/Chip";
 import { Category, Purpose } from "@/types/food";
 import { useMyPosts } from "@/hooks/useMyPosts";
 import { toast } from "sonner";
+
+// Fix default Leaflet marker icons
+const DefaultIcon = L.icon({
+  iconUrl,
+  iconRetinaUrl,
+  shadowUrl,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+L.Marker.prototype.options.icon = DefaultIcon;
 
 const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
 const purposes: { key: Purpose; label: string }[] = [
@@ -15,9 +30,55 @@ const purposes: { key: Purpose; label: string }[] = [
 
 const MAX_IMAGE_SIZE_MB = 2;
 
+// ── Draggable marker + click-to-place inside the map ──────────────────────────
+function DraggableMarker({
+  lat,
+  lng,
+  onMove,
+}: {
+  lat: number;
+  lng: number;
+  onMove: (lat: number, lng: number) => void;
+}) {
+  // Allow clicking anywhere on the map to reposition the pin
+  useMapEvents({
+    click(e) {
+      onMove(e.latlng.lat, e.latlng.lng);
+    },
+  });
+
+  return (
+    <Marker
+      position={[lat, lng]}
+      draggable
+      eventHandlers={{
+        dragend(e) {
+          const { lat, lng } = (e.target as L.Marker).getLatLng();
+          onMove(lat, lng);
+        },
+      }}
+    />
+  );
+}
+
+// ── Reverse geocode helper ─────────────────────────────────────────────────────
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+    );
+    const data = await res.json();
+    return data?.display_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function PostFood() {
   const nav = useNavigate();
   const { addPost, getLastPostTime } = useMyPosts();
+
   const [image, setImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState("");
   const [name, setName] = useState("");
@@ -37,57 +98,86 @@ export default function PostFood() {
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [locating, setLocating] = useState(false);
 
+  // ── Image ──────────────────────────────────────────────────────────────────
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setImageError("");
     const file = e.target.files?.[0];
     if (!file) return;
-
     const sizeMB = file.size / (1024 * 1024);
     if (sizeMB > MAX_IMAGE_SIZE_MB) {
       setImageError(`Image too large (${sizeMB.toFixed(1)} MB). Max allowed: ${MAX_IMAGE_SIZE_MB} MB.`);
       e.target.value = "";
       return;
     }
-
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setImage(reader.result as string);
-    };
+    reader.onloadend = () => setImage(reader.result as string);
     reader.readAsDataURL(file);
   };
 
+  // ── Called whenever pin moves (drag or map-click) ─────────────────────────
+  const handlePinMove = useCallback(async (newLat: number, newLng: number) => {
+    setLat(newLat.toFixed(6));
+    setLng(newLng.toFixed(6));
+    const addr = await reverseGeocode(newLat, newLng);
+    if (addr) setAddress(addr);
+  }, []);
+
+  // ── "Use my location" button ───────────────────────────────────────────────
   const useMyLocation = () => {
-    if (!navigator.geolocation) return toast.error("Geolocation not supported");
-    toast.loading("Finding your location...", { id: "loc" });
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    setLocating(true);
+    toast.loading("Detecting your location…", { id: "loc" });
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         setLat(latitude.toFixed(6));
         setLng(longitude.toFixed(6));
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+
+        const addr = await reverseGeocode(latitude, longitude);
+        if (addr) setAddress(addr);
+
+        // accuracy is in metres — warn user on laptop (usually >100m)
+        if (accuracy > 100) {
+          toast.warning(
+            `Approximate location set (±${Math.round(accuracy)} m). Drag the pin or click the map to correct it.`,
+            { id: "loc", duration: 5000 }
           );
-          const data = await res.json();
-          if (data?.display_name) {
-            setAddress(data.display_name);
-            toast.success("Location set accurately!", { id: "loc" });
-          } else {
-            toast.success("Coordinates set", { id: "loc" });
-          }
-        } catch {
-          toast.success("Coordinates set, but could not fetch address", { id: "loc" });
+        } else {
+          toast.success(
+            `Location set (±${Math.round(accuracy)} m). Drag the pin to fine-tune if needed.`,
+            { id: "loc" }
+          );
         }
+        setLocating(false);
       },
-      () => toast.error("Could not get location", { id: "loc" })
+      (err) => {
+        const messages: Record<number, string> = {
+          1: "Location permission denied. Please allow location access in your browser.",
+          2: "Location unavailable. Check your GPS or network connection.",
+          3: "Location request timed out. Try again.",
+        };
+        toast.error(messages[err.code] ?? "Could not get your location.", { id: "loc" });
+        setLocating(false);
+      },
+      {
+        enableHighAccuracy: true, // use GPS chip when available
+        timeout: 12000,           // wait up to 12 s
+        maximumAge: 0,            // never use a cached/stale position
+      }
     );
   };
 
+  // ── Form submit ────────────────────────────────────────────────────────────
   const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!lat || !lng) {
-      toast.error("Please set a pickup location using 'Use my location' or enter coordinates.");
+      toast.error("Please set a pickup location using 'Use my location' or drag the pin.");
       return;
     }
     const lastPostTime = getLastPostTime();
@@ -104,7 +194,7 @@ export default function PostFood() {
     setBusy(true);
     const res = await addPost({
       name: name.trim(),
-      image: image, // base64 string stored directly
+      image,
       feeds: Number(feeds) || 1,
       price: paid ? Number(price) || 0 : 0,
       expiry_hours: Number(expiryHours) || 4,
@@ -128,10 +218,15 @@ export default function PostFood() {
     nav("/");
   };
 
+  const parsedLat = parseFloat(lat);
+  const parsedLng = parseFloat(lng);
+  const hasLocation = lat && lng && !isNaN(parsedLat) && !isNaN(parsedLng);
+
   return (
     <div className="px-4 py-5 space-y-5 pb-10">
       <h1 className="text-2xl font-extrabold tracking-tight">Post Leftover Food</h1>
 
+      {/* Frequency warning modal */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card shadow-card rounded-3xl p-6 max-w-sm w-full border border-border">
@@ -153,7 +248,7 @@ export default function PostFood() {
       )}
 
       <form onSubmit={handleInitialSubmit} className="space-y-4">
-        {/* Image Upload */}
+        {/* ── Image Upload ── */}
         <div className="space-y-1">
           <label className="block">
             <div className="h-44 rounded-2xl border-2 border-dashed border-border bg-muted/40 flex flex-col items-center justify-center cursor-pointer overflow-hidden relative">
@@ -162,10 +257,7 @@ export default function PostFood() {
                   <img src={image} alt="Preview" className="w-full h-full object-cover" />
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setImage(null);
-                    }}
+                    onClick={(e) => { e.preventDefault(); setImage(null); }}
                     className="absolute top-2 right-2 w-7 h-7 rounded-full bg-card/90 flex items-center justify-center shadow-soft"
                   >
                     <X className="w-4 h-4" />
@@ -179,19 +271,12 @@ export default function PostFood() {
                 </>
               )}
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageChange}
-            />
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
           </label>
-          {imageError && (
-            <p className="text-xs text-destructive font-semibold">{imageError}</p>
-          )}
+          {imageError && <p className="text-xs text-destructive font-semibold">{imageError}</p>}
         </div>
 
-        {/* Food details */}
+        {/* ── Food Details ── */}
         <div className="space-y-3">
           <input
             className="input-field"
@@ -234,7 +319,7 @@ export default function PostFood() {
           />
         </div>
 
-        {/* Location */}
+        {/* ── Location ── */}
         <div className="space-y-3">
           <input
             className="input-field"
@@ -243,6 +328,8 @@ export default function PostFood() {
             onChange={(e) => setAddress(e.target.value)}
             required
           />
+
+          {/* Lat/Lng inputs — still editable manually */}
           <div className="grid grid-cols-2 gap-2">
             <input
               className="input-field"
@@ -259,17 +346,52 @@ export default function PostFood() {
               required
             />
           </div>
-          <button type="button" onClick={useMyLocation} className="btn-secondary w-full">
-            📍 Use my location
+
+          {/* Use my location button */}
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locating}
+            className="btn-secondary w-full flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            <MapPin className="w-4 h-4" />
+            {locating ? "Detecting…" : "Use my location"}
           </button>
-          {lat && lng && (
-            <p className="text-xs text-success font-semibold text-center">
-              ✓ Location set: {parseFloat(lat).toFixed(4)}, {parseFloat(lng).toFixed(4)}
-            </p>
+
+          {/* ── Draggable map — shown once we have coords ── */}
+          {hasLocation && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                Drag the pin or tap the map to set the exact spot
+              </p>
+              <div className="h-52 w-full rounded-2xl overflow-hidden border border-border">
+                <MapContainer
+                  key={`${parsedLat}-${parsedLng}`}   // re-centre when coords change
+                  center={[parsedLat, parsedLng]}
+                  zoom={16}
+                  scrollWheelZoom={false}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    attribution="&copy; OpenStreetMap"
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <DraggableMarker
+                    lat={parsedLat}
+                    lng={parsedLng}
+                    onMove={handlePinMove}
+                  />
+                </MapContainer>
+              </div>
+              <p className="text-xs text-success font-semibold text-center">
+                ✓ {parseFloat(lat).toFixed(5)}, {parseFloat(lng).toFixed(5)}
+              </p>
+            </div>
           )}
         </div>
 
-        {/* Category */}
+        {/* ── Category ── */}
         <div>
           <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Category</p>
           <div className="flex flex-wrap gap-2">
@@ -279,7 +401,7 @@ export default function PostFood() {
           </div>
         </div>
 
-        {/* Purpose */}
+        {/* ── Purpose ── */}
         <div>
           <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Purpose</p>
           <div className="flex flex-wrap gap-2">
