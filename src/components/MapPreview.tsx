@@ -44,5 +44,13 @@ export default function MapPreview({ lat, lng, label, height = "h-32", interacti
 }
 
 export function openInGoogleMaps(lat: number, lng: number) {
-  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, "_blank");
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  // Use an anchor click to bypass iframe popup blockers (e.g. Lovable preview sandbox)
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
