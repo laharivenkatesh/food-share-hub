@@ -15,10 +15,16 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (mode === "signup" && !agreed) {
+      toast.error("Please accept the Terms & Conditions to continue.");
+      return;
+    }
     setBusy(true);
     const res =
       mode === "login"
@@ -115,7 +121,72 @@ export default function Auth() {
             </div>
           )}
 
-          <button type="submit" disabled={busy} className="btn-primary !mt-5">
+          {mode === "signup" && (
+            <div className="space-y-2 pt-1">
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-1 w-4 h-4 accent-green-600 cursor-pointer shrink-0"
+                />
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  I have read and agree to the{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowTerms(!showTerms)}
+                    className="text-green-600 font-semibold underline underline-offset-2"
+                  >
+                    Terms & Conditions
+                  </button>
+                  , including the food safety disclaimer.
+                </span>
+              </label>
+
+              {showTerms && (
+                <div className="bg-muted rounded-xl p-4 text-xs text-muted-foreground space-y-2 leading-relaxed border border-border">
+                  <p className="font-bold text-foreground text-sm">📋 Terms & Conditions</p>
+                  <p>
+                    By using Zerra, you acknowledge and agree to the following:
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">⚠️ Health & Safety Disclaimer:</span>{" "}
+                    All food shared on this platform is donated voluntarily. The donor is not responsible
+                    for any health issues, allergies, food poisoning, or adverse reactions that may arise
+                    from consuming the shared food. Collect and consume at your own risk.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">🥗 Food Quality:</span>{" "}
+                    Donors must ensure food is safe, properly stored, and within a reasonable consumption
+                    window. Recipients are advised to inspect food before consuming and use their own
+                    judgment.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">🤝 Community Responsibility:</span>{" "}
+                    Users agree to use this platform in good faith, not misuse listings, and treat all
+                    community members with respect.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">🔒 Data:</span>{" "}
+                    Your email and profile data are stored securely and never sold to third parties.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowTerms(false)}
+                    className="text-green-600 font-semibold mt-1"
+                  >
+                    Close ↑
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy || (mode === "signup" && !agreed)}
+            className="btn-primary !mt-5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             {busy ? "Please wait…" : mode === "login" ? "Login" : "Create Account"}
           </button>
         </form>
