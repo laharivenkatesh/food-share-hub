@@ -41,12 +41,15 @@ export default function FoodDetail() {
 
       const ContactCard = () => (
         oppositeProfile ? (
-          <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3">
-            <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
-              {isDonor ? "Collector Details" : "Donor Details"}
-            </p>
-            <p className="font-extrabold text-foreground text-lg">{oppositeProfile.name}</p>
-            <p className="text-sm font-bold text-primary-deep">{oppositeProfile.phone || "No phone provided"}</p>
+          <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3 flex items-center gap-4">
+            <img src={food.image} alt={food.name} className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0" />
+            <div>
+              <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
+                {isDonor ? "Collector Details" : "Donor Details"}
+              </p>
+              <p className="font-extrabold text-foreground text-lg">{oppositeProfile.name}</p>
+              <p className="text-sm font-bold text-primary-deep">{oppositeProfile.phone || "No phone provided"}</p>
+            </div>
           </div>
         ) : null
       );
