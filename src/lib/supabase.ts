@@ -6,7 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const isSupabaseConfigured = Boolean(
+  SUPABASE_URL && 
+  SUPABASE_ANON_KEY && 
+  SUPABASE_URL !== "YOUR_SECRET_VALUE_GOES_HERE" &&
+  SUPABASE_URL.startsWith("http")
+);
 
 if (!isSupabaseConfigured) {
   // eslint-disable-next-line no-console

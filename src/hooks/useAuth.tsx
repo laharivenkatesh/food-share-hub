@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 
 export type Role = "Student" | "Provider" | "NGO";
@@ -61,6 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const initializeAuth = async () => {
+      if (!isSupabaseConfigured) {
+        if (isMounted) setLoading(false);
+        return;
+      }
       try {
         // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
