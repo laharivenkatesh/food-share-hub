@@ -20,7 +20,13 @@ export default function FoodCard({ food }: { food: FoodItem }) {
   return (
     <article className="card-soft animate-fade-up">
       <div className="relative">
-        <img src={food.image} alt={food.name} className="w-full h-44 object-cover" loading="lazy" />
+        <img 
+          src={food.image} 
+          alt={food.name} 
+          className="w-full h-44 object-cover" 
+          loading="lazy" 
+          onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
+        />
         <span className={`absolute top-3 right-3 badge-pill ${statusStyles[food.status]}`}>
           {food.status}
         </span>

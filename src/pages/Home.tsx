@@ -18,7 +18,7 @@ export default function Home() {
     setActiveCats((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   const list = useMemo(() => {
-    let arr = [...dbFoods, ...mockFoods];
+    let arr = [...dbFoods];
     if (activeCats.length) arr = arr.filter((f) => activeCats.includes(f.category));
     switch (sort) {
       case "Expiry Soon": arr.sort((a,b) => a.expiryHours - b.expiryHours); break;

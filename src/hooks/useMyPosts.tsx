@@ -14,10 +14,11 @@ export function useMyPosts() {
       return;
     }
     setLoading(true);
-    const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
-    const allFoods: FoodItem[] = JSON.parse(stored);
+    const stored = localStorage.getItem("zerra_foods") || "[]";
+    let allFoods: FoodItem[] = JSON.parse(stored);
     
-    // Also save to localStorage if it wasn't there
+    // Filter out old static mockFoods (which have IDs like 'f1' instead of 'f_...')
+    allFoods = allFoods.filter((f) => f.id.includes("_"));
     if (!localStorage.getItem("zerra_foods")) {
       localStorage.setItem("zerra_foods", stored);
     }
@@ -35,8 +36,9 @@ export function useMyPosts() {
     async (input: any) => {
       if (!user) return { ok: false as const, error: "Not authenticated" };
       
-      const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
-      const allFoods: FoodItem[] = JSON.parse(stored);
+      const stored = localStorage.getItem("zerra_foods") || "[]";
+      let allFoods: FoodItem[] = JSON.parse(stored);
+      allFoods = allFoods.filter((f) => f.id.includes("_"));
 
       const newFood: FoodItem = {
         id: "f_" + Math.random().toString(36).substring(2, 9),
@@ -107,8 +109,11 @@ export function useAllFoods() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem("zerra_foods") || JSON.stringify(mockFoods);
+    const stored = localStorage.getItem("zerra_foods") || "[]";
     let allFoods: FoodItem[] = JSON.parse(stored);
+    
+    // Filter out old static mockFoods
+    allFoods = allFoods.filter((f) => f.id.includes("_"));
     
     // Sort by created at desc
     allFoods.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());

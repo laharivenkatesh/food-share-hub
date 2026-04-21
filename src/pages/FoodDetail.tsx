@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { mockFoods } from "@/data/mockFoods";
+import { useAllFoods } from "@/hooks/useMyPosts";
 import MapPreview, { openInGoogleMaps } from "@/components/MapPreview";
 import ReviewSection from "@/components/ReviewSection";
 import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2 } from "lucide-react";
@@ -18,7 +18,8 @@ export default function FoodDetail() {
   const { user } = useAuth();
   const { getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
   
-  const food = mockFoods.find((f) => f.id === id);
+  const { foods } = useAllFoods();
+  const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>(food?.realtimeStatus || "Still Available");
 
   if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
@@ -43,7 +44,12 @@ export default function FoodDetail() {
       const ContactCard = () => (
         oppositeProfile ? (
           <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3 flex items-center gap-4">
-            <img src={food.image} alt={food.name} className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0" />
+            <img 
+              src={food.image} 
+              alt={food.name} 
+              className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0" 
+              onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
+            />
             <div>
               <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
                 {isDonor ? "Collector Details" : "Donor Details"}
@@ -143,7 +149,12 @@ export default function FoodDetail() {
   return (
     <div className="pb-6">
       <div className="relative">
-        <img src={food.image} alt={food.name} className="w-full h-64 object-cover" />
+        <img 
+          src={food.image} 
+          alt={food.name} 
+          className="w-full h-64 object-cover" 
+          onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
+        />
         <button onClick={()=>nav(-1)} className="absolute top-4 left-4 w-10 h-10 rounded-full bg-card/90 backdrop-blur flex items-center justify-center shadow-soft">
           <ArrowLeft className="w-5 h-5" />
         </button>
