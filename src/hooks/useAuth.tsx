@@ -39,87 +39,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Fetch profile row from the profiles table
   const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
 
-      if (error) {
-        console.error("fetchProfile error:", error);
-        return null;
-      }
-      return data as MockProfile;
-    } catch (err) {
-      console.error("fetchProfile exception:", err);
+    if (error) {
+      console.error("fetchProfile error:", error);
       return null;
     }
+    return data as MockProfile;
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const initializeAuth = async () => {
-      try {
-        // Get the current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error("Session error:", sessionError);
-          if (isMounted) {
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (isMounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-
-          if (session?.user) {
-            const p = await fetchProfile(session.user.id);
-            if (isMounted) {
-              setProfile(p);
-            }
-          }
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Auth initialization error:", err);
-        if (isMounted) {
-          setLoading(false);
-        }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const p = await fetchProfile(session.user.id);
+        setProfile(p);
       }
-    };
-
-    initializeAuth();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (isMounted) {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id);
-          if (isMounted) {
-            setProfile(p);
-          }
-        } else {
-          if (isMounted) {
-            setProfile(null);
-          }
-        }
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
+      setLoading(false);
     });
 
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const p = await fetchProfile(session.user.id);
+        setProfile(p);
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // login
@@ -162,8 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!data.user)
       return { ok: false, error: "Signup failed — please try again." };
 
-    // Wait a moment for the trigger to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // DO NOT insert profile here - the trigger will do it automatically!
+    // Just wait a moment for the trigger to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     return { ok: true };
   };
