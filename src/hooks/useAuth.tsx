@@ -66,8 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
+        // Fallback timeout to prevent permanent deadlocks
+        const timeout = setTimeout(() => {
+          if (isMounted && loading) {
+            console.warn("Auth initialization timed out, forcing load completion.");
+            setLoading(false);
+          }
+        }, 5000);
+
         // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        clearTimeout(timeout);
 
         if (sessionError) {
           console.error("Session error:", sessionError);
