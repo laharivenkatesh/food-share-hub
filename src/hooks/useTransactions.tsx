@@ -109,6 +109,21 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchTransactions();
+
+    const channel = supabase
+      .channel("transactions-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transactions" },
+        () => {
+          fetchTransactions();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchTransactions]);
 
   useEffect(() => {
