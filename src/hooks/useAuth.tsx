@@ -69,10 +69,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fallback timeout to prevent permanent deadlocks
         const timeout = setTimeout(() => {
           if (isMounted && loading) {
-            console.warn("Auth initialization timed out, forcing load completion.");
+            console.warn("Auth initialization timed out! Clearing corrupted browser cache.");
+            try {
+              for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
+                  localStorage.removeItem(key);
+                }
+              }
+            } catch (e) {}
             setLoading(false);
           }
-        }, 5000);
+        }, 1500);
 
         // Get the current session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
