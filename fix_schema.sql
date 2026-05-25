@@ -45,3 +45,64 @@ create policy "Transactions: insert by collector"
 
 create policy "Transactions: update by participants"
   on public.transactions for update using (auth.uid() = donor_id or auth.uid() = collector_id);
+
+-- ============================================================
+-- 3) CREATE THE NOTIFICATIONS TABLE
+-- ============================================================
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  food_id uuid not null references public.foods(id) on delete cascade,
+  title text not null,
+  message text not null,
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table public.notifications enable row level security;
+
+-- Drop policies if they exist so this script can be run multiple times safely
+drop policy if exists "Users can view their own notifications" on public.notifications;
+drop policy if exists "Users can update their own notifications" on public.notifications;
+drop policy if exists "Users can delete their own notifications" on public.notifications;
+
+create policy "Users can view their own notifications"
+  on public.notifications for select using (auth.uid() = user_id);
+
+create policy "Users can update their own notifications"
+  on public.notifications for update using (auth.uid() = user_id);
+
+create policy "Users can delete their own notifications"
+  on public.notifications for delete using (auth.uid() = user_id);
+
+-- ============================================================
+-- 4) CREATE THE TRIGGER FUNCTION FOR FOOD NOTIFICATIONS
+-- ============================================================
+create or replace function public.notify_all_users_on_new_food()
+returns trigger as $$
+begin
+  -- Trigger only when food becomes "available" (on creation or status change)
+  if (tg_op = 'INSERT' and new.status = 'available') or 
+     (tg_op = 'UPDATE' and new.status = 'available' and old.status <> 'available') then
+     
+    insert into public.notifications (user_id, food_id, title, message)
+    select 
+      p.id, 
+      new.id, 
+      '🍱 New Food Available!', 
+      new.name || ' is available for pickup at ' || new.address || '. Grab it before it expires!'
+    from public.profiles p
+    where p.id <> new.user_id;
+    
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Create the trigger
+drop trigger if exists on_new_food_posted on public.foods;
+create trigger on_new_food_posted
+  after insert or update on public.foods
+  for each row
+  execute function public.notify_all_users_on_new_food();
+
