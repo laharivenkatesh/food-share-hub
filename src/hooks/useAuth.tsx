@@ -1,39 +1,30 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { toast } from "sonner";
+import { supabase } from "../lib/supabase";
 
-export type Role = "Student" | "Provider" | "NGO";
-
-export interface MockProfile {
+export interface UserProfile {
   id: string;
   name: string;
   email: string;
   phone?: string;
-  role: Role;
-  streak: number;
-  trustScore: number;
   created_at: string;
 }
 
-// Emulate a standard Supabase User for compatibility with existing modules
 export interface JWTUser {
   id: string;
   phone?: string;
   email: string;
-  role: Role;
 }
 
 interface AuthContextValue {
   user: JWTUser | null;
-  profile: MockProfile | null;
+  profile: UserProfile | null;
   loading: boolean;
-  sendOtp: (email: string) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
+  sendOtp: (email: string, password?: string, name?: string, phone?: string, mode?: "signup" | "login") => Promise<{ ok: true } | { ok: false; error: string }>;
   verifyOtp: (
     email: string,
     otp: string,
-    name?: string,
-    role?: Role,
-    phone?: string,
-    password?: string
+    type: "signup" | "recovery" | "magiclink"
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -43,52 +34,29 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<JWTUser | null>(null);
-  const [profile, setProfile] = useState<MockProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize and restore session from localStorage JWT
+  // Initialize and restore session from Supabase
   const initializeAuth = async () => {
-    const token = localStorage.getItem("zerra_jwt_token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      const response = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        const { user: dbUser } = session;
+        setUser({
+          id: dbUser.id,
+          email: dbUser.email || "",
+          phone: dbUser.user_metadata?.phone || "",
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const dbUser = data.user;
-
-        // Map MongoDB user to standard JWTUser and MockProfile structures for compatibility
-        const mappedUser: JWTUser = {
-          id: dbUser._id || dbUser.id,
-          phone: dbUser.phone || "",
-          email: dbUser.email,
-          role: dbUser.role,
-        };
-
-        const mappedProfile: MockProfile = {
-          id: dbUser._id || dbUser.id,
-          name: dbUser.name || "New User",
-          email: dbUser.email,
-          phone: dbUser.phone || "",
-          role: dbUser.role || "Student",
-          streak: dbUser.streak || 1,
-          trustScore: dbUser.trustScore || 4.5,
-          created_at: dbUser.createdAt || new Date().toISOString(),
-        };
-
-        setUser(mappedUser);
-        setProfile(mappedProfile);
-      } else {
-        // Token has expired or is invalid, clean it up
-        localStorage.removeItem("zerra_jwt_token");
+        setProfile({
+          id: dbUser.id,
+          name: dbUser.user_metadata?.name || "User",
+          email: dbUser.email || "",
+          phone: dbUser.user_metadata?.phone || "",
+          created_at: dbUser.created_at,
+        });
       }
     } catch (err) {
       console.error("Auth restoration error:", err);
@@ -99,82 +67,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initializeAuth();
+
+    // Listen to Supabase auth changes automatically!
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || "",
+          phone: session.user.user_metadata?.phone || "",
+        });
+        setProfile({
+          id: session.user.id,
+          name: session.user.user_metadata?.name || "User",
+          email: session.user.email || "",
+          phone: session.user.user_metadata?.phone || "",
+          created_at: session.user.created_at,
+        });
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   /**
-   * Triggers OTP sending endpoint on our Express backend (Google SMTP)
+   * Triggers OTP sending via Supabase Auth
    */
-  const sendOtp = async (email: string) => {
+  const sendOtp = async (email: string, password?: string, name?: string, phone?: string, mode?: "signup" | "login") => {
     try {
-      const res = await fetch("/api/auth/send-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false as const, error: data.error || "Failed to send OTP" };
+      if (mode === "signup" && password) {
+        // Sign up logic - sends an OTP to email automatically if confirm email is enabled!
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name,
+              phone: phone
+            }
+          }
+        });
+        
+        if (error) throw error;
+        return { ok: true as const };
+      } else {
+        // Login Logic - Since they want OTP on login, we use signInWithOtp
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+        });
+        if (error) throw error;
+        return { ok: true as const };
       }
-
-      return {
-        ok: true as const,
-        dev_otp: data.dev_otp, // Returned in sandbox mode when SMTP is not configured
-      };
     } catch (err: any) {
-      return { ok: false as const, error: err.message || "Connection to auth server failed." };
+      return { ok: false as const, error: err.message || "Failed to send OTP." };
     }
   };
 
   /**
-   * Verifies the OTP code on the backend and establishes a JWT session
+   * Verifies the OTP code via Supabase
    */
   const verifyOtp = async (
     email: string,
     otp: string,
-    name?: string,
-    role?: Role,
-    phone?: string,
-    password?: string
+    type: "signup" | "recovery" | "magiclink"
   ) => {
     try {
-      const res = await fetch("/api/auth/verify-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, name, role, phone, password }),
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: type,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        return { ok: false as const, error: data.error || "Verification failed" };
-      }
-
-      const { token, user: dbUser } = data;
-      localStorage.setItem("zerra_jwt_token", token);
-
-      const mappedUser: JWTUser = {
-        id: dbUser._id || dbUser.id,
-        phone: dbUser.phone || "",
-        email: dbUser.email,
-        role: dbUser.role,
-      };
-
-      const mappedProfile: MockProfile = {
-        id: dbUser._id || dbUser.id,
-        name: dbUser.name || "New User",
-        email: dbUser.email,
-        phone: dbUser.phone || "",
-        role: dbUser.role || "Student",
-        streak: dbUser.streak || 1,
-        trustScore: dbUser.trustScore || 4.5,
-        created_at: dbUser.createdAt || new Date().toISOString(),
-      };
-
-      setUser(mappedUser);
-      setProfile(mappedProfile);
+      if (error) throw error;
+      
+      // Auto-polling the page sign in logic is handled by onAuthStateChange!
       return { ok: true as const };
     } catch (err: any) {
-      return { ok: false as const, error: err.message || "Connection to auth server failed." };
+      return { ok: false as const, error: err.message || "Verification failed." };
     }
   };
 
@@ -182,43 +155,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Refresh current profile details
    */
   const refreshProfile = async () => {
-    const token = localStorage.getItem("zerra_jwt_token");
-    if (!token) return;
-
-    try {
-      const response = await fetch("/api/auth/me", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const dbUser = data.user;
-
-        const mappedProfile: MockProfile = {
-          id: dbUser._id || dbUser.id,
-          name: dbUser.name || "New User",
-          email: dbUser.email,
-          phone: dbUser.phone || "",
-          role: dbUser.role || "Student",
-          streak: dbUser.streak || 1,
-          trustScore: dbUser.trustScore || 4.5,
-          created_at: dbUser.createdAt || new Date().toISOString(),
-        };
-
-        setProfile(mappedProfile);
-      }
-    } catch (err) {
-      console.error("Error refreshing profile:", err);
-    }
+    // With Supabase onAuthStateChange this is often unneeded, but implemented for compatibility
+    await initializeAuth();
   };
 
   /**
-   * Purges JWT session and log out
+   * Purges session and log out
    */
   const logout = async () => {
-    localStorage.removeItem("zerra_jwt_token");
+    await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     toast.success("Logged out successfully");

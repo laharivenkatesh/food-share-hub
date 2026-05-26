@@ -131,7 +131,13 @@ export default function Auth() {
     }
 
     setBusy(true);
-    const res = await sendOtp(email);
+    const res = await sendOtp(
+      email, 
+      authMode === "signup" ? password : undefined, 
+      authMode === "signup" ? name : undefined, 
+      authMode === "signup" ? phone : undefined, 
+      authMode
+    );
     setBusy(false);
 
     if (!res.ok) {
@@ -163,7 +169,13 @@ export default function Auth() {
   const handleResendOtp = async () => {
     if (resendTimer > 0) return;
     setBusy(true);
-    const res = await sendOtp(email);
+    const res = await sendOtp(
+      email, 
+      authMode === "signup" ? password : undefined, 
+      authMode === "signup" ? name : undefined, 
+      authMode === "signup" ? phone : undefined, 
+      authMode
+    );
     setBusy(false);
 
     if (!res.ok) {
@@ -247,10 +259,7 @@ export default function Auth() {
     const res = await verifyOtp(
       email,
       otpCode,
-      authMode === "signup" ? name : undefined,
-      authMode === "signup" ? "Student" : undefined, // Hardcoded standard role
-      authMode === "signup" ? phone : undefined,
-      authMode === "signup" ? password : undefined
+      authMode === "signup" ? "signup" : "magiclink"
     );
     setBusy(false);
 
