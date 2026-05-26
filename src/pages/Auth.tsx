@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Leaf, Phone, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, GraduationCap, Store, Building } from "lucide-react";
+import { Leaf, Mail, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, GraduationCap, Store, Building } from "lucide-react";
 import { useAuth, Role } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -28,9 +28,9 @@ export default function Auth() {
   }, [user, navigate, from]);
 
   // Auth flow states
-  const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [step, setStep] = useState<"email" | "otp">("email");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("Student");
   const [busy, setBusy] = useState(false);
@@ -73,7 +73,7 @@ export default function Auth() {
         if (prev <= 1) {
           if (expiryIntervalRef.current) clearInterval(expiryIntervalRef.current);
           toast.error("Your verification code has expired. Please request a new one.");
-          setStep("phone"); // bounce back
+          setStep("email"); // bounce back
           return 0;
         }
         return prev - 1;
@@ -96,11 +96,17 @@ export default function Auth() {
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
-  // Step 1: Submit Phone Number to receive OTP
+  // Step 1: Submit Email to receive OTP
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phone) {
-      toast.error("Please enter a valid mobile number.");
+    if (!email) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Please enter a valid email address format.");
       return;
     }
 
@@ -115,7 +121,7 @@ export default function Auth() {
     }
 
     setBusy(true);
-    const res = await sendOtp(phone);
+    const res = await sendOtp(email);
     setBusy(false);
 
     if (!res.ok) {
@@ -147,7 +153,7 @@ export default function Auth() {
   const handleResendOtp = async () => {
     if (resendTimer > 0) return;
     setBusy(true);
-    const res = await sendOtp(phone);
+    const res = await sendOtp(email);
     setBusy(false);
 
     if (!res.ok) {
@@ -229,7 +235,7 @@ export default function Auth() {
 
     setBusy(true);
     const res = await verifyOtp(
-      phone,
+      email,
       otpCode,
       authMode === "signup" ? name : undefined,
       authMode === "signup" ? role : undefined
@@ -269,13 +275,13 @@ export default function Auth() {
             Zerra Food Hub
           </h1>
           <p className="text-xs text-muted-foreground leading-relaxed px-4">
-            {step === "phone"
+            {step === "email"
               ? "Share leftover food, save the planet. Authenticate to continue."
               : "We have dispatched a 6-digit security code."}
           </p>
         </div>
 
-        {step === "phone" ? (
+        {step === "email" ? (
           <div className="space-y-5">
             {/* Tab Selector */}
             <div className="relative flex p-1 bg-muted rounded-2xl border border-border">
@@ -361,23 +367,23 @@ export default function Auth() {
 
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                  Mobile Number
+                  Email Address
                 </label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-3 text-muted-foreground font-bold text-sm">
-                    <Phone className="w-4 h-4" />
+                    <Mail className="w-4 h-4" />
                   </span>
                   <input
                     className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
-                    placeholder="9876543210"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="yourname@example.com"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
                 <p className="text-[9px] text-muted-foreground mt-1 leading-relaxed">
-                  Format: E.164 (+1234567890) or plain 10-digit number.
+                  We'll email you a secure 6-digit code to verify your identity.
                 </p>
               </div>
 
@@ -418,19 +424,19 @@ export default function Auth() {
         ) : (
           /* OTP VERIFICATION STEP */
           <form onSubmit={handleVerifyOtp} className="space-y-5 animate-fade-up">
-            {/* Target Phone display card */}
+            {/* Target Email display card */}
             <div className="flex items-center justify-between p-3 bg-muted rounded-xl border border-border">
-              <div>
+              <div className="min-w-0 flex-1 mr-2">
                 <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Sending OTP to</p>
-                <p className="text-xs font-extrabold text-foreground">{phone}</p>
+                <p className="text-xs font-extrabold text-foreground truncate">{email}</p>
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  setStep("phone");
+                  setStep("email");
                   setSandboxOtp(null);
                 }}
-                className="px-2.5 py-1 text-[10px] font-semibold text-primary-deep hover:text-emerald-700 bg-card border border-border rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1"
+                className="px-2.5 py-1 text-[10px] font-semibold text-primary-deep hover:text-emerald-700 bg-card border border-border rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1 shrink-0"
               >
                 <ArrowLeft className="w-3 h-3" /> Edit
               </button>
@@ -483,11 +489,11 @@ export default function Auth() {
               )}
             </div>
 
-            {/* SMS Sandbox Active notification */}
+            {/* SMTP Sandbox Active notification */}
             {sandboxOtp && (
               <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between animate-fade-up">
-                <div>
-                  <p className="text-[9px] text-primary-deep font-bold uppercase tracking-wider">SMS Sandbox Mode</p>
+                <div className="min-w-0 flex-1 mr-2">
+                  <p className="text-[9px] text-primary-deep font-bold uppercase tracking-wider">Email Sandbox Mode</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">OTP is: <strong className="text-primary-deep font-extrabold text-xs">{sandboxOtp}</strong></p>
                 </div>
                 <button
@@ -496,7 +502,7 @@ export default function Auth() {
                     navigator.clipboard.writeText(sandboxOtp);
                     toast.success("OTP copied!");
                   }}
-                  className="px-2 py-0.5 text-[9px] font-bold text-primary-deep hover:bg-primary/20 border border-primary/30 rounded-md transition-colors"
+                  className="px-2 py-0.5 text-[9px] font-bold text-primary-deep hover:bg-primary/20 border border-primary/30 rounded-md transition-colors shrink-0"
                 >
                   Copy
                 </button>

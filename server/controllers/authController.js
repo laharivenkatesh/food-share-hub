@@ -1,29 +1,34 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import twilio from "twilio";
+import nodemailer from "nodemailer";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import Otp from "../models/Otp.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-local-secret-3c8d3523-cc88-4edf-b0e5-e4d50a7f47c2";
 
-// --- Twilio Client Initialization ---
-const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+// --- Nodemailer Transporter Initialization ---
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
 
-let twilioClient = null;
-const isTwilioConfigured = Boolean(twilioSid && twilioAuthToken && twilioPhone);
+let transporter = null;
+const isEmailConfigured = Boolean(emailUser && emailPass);
 
-if (isTwilioConfigured) {
+if (isEmailConfigured) {
   try {
-    twilioClient = twilio(twilioSid, twilioAuthToken);
+    transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+    });
   } catch (err) {
-    console.error("Failed to initialize Twilio client:", err.message);
+    console.error("Failed to initialize Nodemailer SMTP transporter:", err.message);
   }
 } else {
   console.warn(
-    "[DEV MODE] Twilio credentials missing from .env. The server will run in SMS Sandbox mode: OTPs will be printed to the terminal console and returned in the API response."
+    "[DEV MODE] Google SMTP credentials missing from .env. The server will run in Email Sandbox mode: OTPs will be printed to the terminal console and returned in the API response."
   );
 }
 
@@ -42,32 +47,23 @@ const generateNumericOtp = () => {
 };
 
 /**
- * Controller to send an OTP SMS to a validated mobile number
+ * Controller to send an OTP via email
  * POST /api/auth/send-otp
  */
 export const sendOtp = async (req, res) => {
-  const { phone } = req.body;
+  const { email } = req.body;
 
-  if (!phone) {
-    return res.status(400).json({ error: "Mobile number is required" });
+  if (!email) {
+    return res.status(400).json({ error: "Email address is required" });
   }
 
-  // Validate phone format (E.164-ish or standard local 10-digit)
-  const phoneRegex = /^\+?[1-9]\d{1,14}$/; // Valid E.164
-  const standard10DigitRegex = /^\d{10}$/; // Valid 10 digit local
-
-  if (!phoneRegex.test(phone) && !standard10DigitRegex.test(phone)) {
-    return res.status(400).json({
-      error: "Invalid mobile number format. Please provide a valid 10-digit number or international E.164 format (e.g. +1234567890).",
-    });
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: "Invalid email address format." });
   }
 
-  // Ensure consistent phone format
-  let formattedPhone = phone.trim();
-  if (standard10DigitRegex.test(formattedPhone) && !formattedPhone.startsWith("+")) {
-    formattedPhone = `+91${formattedPhone}`; // Default to Indian prefix or standard international if local
-  }
-
+  const normalizedEmail = email.trim().toLowerCase();
   const otpCode = generateNumericOtp();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes expiration
 
@@ -75,48 +71,63 @@ export const sendOtp = async (req, res) => {
     if (isMongoConnected()) {
       // Store/replace in MongoDB
       await Otp.findOneAndUpdate(
-        { phone: formattedPhone },
+        { email: normalizedEmail },
         { otp: otpCode, expiresAt },
         { upsert: true, new: true }
       );
     } else {
       // Store in memory
-      inMemoryOtps.set(formattedPhone, { otp: otpCode, expiresAt });
-      console.log(`[IN-MEMORY DB] Saved OTP for ${formattedPhone}`);
+      inMemoryOtps.set(normalizedEmail, { otp: otpCode, expiresAt });
+      console.log(`[IN-MEMORY DB] Saved OTP for ${normalizedEmail}`);
     }
 
-    // Send SMS via Twilio if configured, otherwise bypass
-    if (isTwilioConfigured && twilioClient) {
+    // Send Email via Google SMTP if configured, otherwise bypass
+    if (isEmailConfigured && transporter) {
       try {
-        await twilioClient.messages.create({
-          body: `[Zerra] Your verification code is ${otpCode}. It will expire in 5 minutes.`,
-          from: twilioPhone,
-          to: formattedPhone,
-        });
-        console.log(`[SMS SUCCESS] Sent OTP ${otpCode} to ${formattedPhone}`);
+        const mailOptions = {
+          from: `"Food Share Hub" <${emailUser}>`,
+          to: normalizedEmail,
+          subject: "Your Verification Code - Food Share Hub",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+              <h2 style="color: #2e7d32; text-align: center;">Food Share Hub</h2>
+              <p>Hello,</p>
+              <p>Thank you for using Food Share Hub. To complete your login or registration, please use the following 6-digit verification code:</p>
+              <div style="background-color: #f1f8e9; padding: 15px; border-radius: 4px; text-align: center; margin: 20px 0;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #2e7d32;">${otpCode}</span>
+              </div>
+              <p>This code is valid for <strong>5 minutes</strong>. If you did not request this code, please ignore this email.</p>
+              <hr style="border: 0; border-top: 1px solid #eeeeee; margin: 25px 0;" />
+              <p style="font-size: 12px; color: #757575; text-align: center;">Saving food, sharing love. &copy; 2026 Food Share Hub.</p>
+            </div>
+          `,
+        };
+
+        await transporter.sendMail(mailOptions);
+        console.log(`[SMTP SUCCESS] Sent OTP ${otpCode} to ${normalizedEmail}`);
         return res.status(200).json({
-          message: "OTP sent successfully via SMS. It is valid for 5 minutes.",
-          phone: formattedPhone,
+          message: "OTP sent successfully via email. It is valid for 5 minutes.",
+          email: normalizedEmail,
         });
-      } catch (smsError) {
-        console.error("Twilio SMS send failed:", smsError.message);
-        // Graceful fallback to sandbox response if Twilio account has issues
+      } catch (smtpError) {
+        console.error("SMTP Email send failed:", smtpError.message);
+        // Fallback to sandbox response
         return res.status(200).json({
-          warning: "Twilio SMS sending failed, falling back to sandbox mode.",
+          warning: "Google SMTP sending failed, falling back to sandbox mode.",
           message: "OTP generated successfully (Sandbox Mode).",
-          phone: formattedPhone,
-          dev_otp: otpCode, // Send in response so developer doesn't get blocked
+          email: normalizedEmail,
+          dev_otp: otpCode,
         });
       }
     } else {
       // Sandbox bypass mode
       console.log(`\n======================================================`);
-      console.log(`[SANDBOX OTP] Phone: ${formattedPhone} | Code: ${otpCode}`);
+      console.log(`[SANDBOX OTP] Email: ${normalizedEmail} | Code: ${otpCode}`);
       console.log(`======================================================\n`);
 
       return res.status(200).json({
         message: "OTP generated successfully (Sandbox Mode).",
-        phone: formattedPhone,
+        email: normalizedEmail,
         dev_otp: otpCode, // Returned for dev convenience
       });
     }
@@ -131,37 +142,33 @@ export const sendOtp = async (req, res) => {
  * POST /api/auth/verify-otp
  */
 export const verifyOtp = async (req, res) => {
-  const { phone, otp, name, role } = req.body;
+  const { email, otp, name, role } = req.body;
 
-  if (!phone || !otp) {
-    return res.status(400).json({ error: "Mobile number and OTP are required" });
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Email address and OTP are required" });
   }
 
-  // Normalize phone
-  let formattedPhone = phone.trim();
-  if (/^\d{10}$/.test(formattedPhone) && !formattedPhone.startsWith("+")) {
-    formattedPhone = `+91${formattedPhone}`;
-  }
+  const normalizedEmail = email.trim().toLowerCase();
 
   try {
     let otpRecord = null;
 
     if (isMongoConnected()) {
-      otpRecord = await Otp.findOne({ phone: formattedPhone });
+      otpRecord = await Otp.findOne({ email: normalizedEmail });
     } else {
-      otpRecord = inMemoryOtps.get(formattedPhone);
+      otpRecord = inMemoryOtps.get(normalizedEmail);
     }
 
     if (!otpRecord) {
-      return res.status(400).json({ error: "No verification code has been sent to this number, or it has expired." });
+      return res.status(400).json({ error: "No verification code has been sent to this email, or it has expired." });
     }
 
     // Verify expiration
     if (new Date() > new Date(otpRecord.expiresAt)) {
       if (isMongoConnected()) {
-        await Otp.deleteOne({ phone: formattedPhone });
+        await Otp.deleteOne({ email: normalizedEmail });
       } else {
-        inMemoryOtps.delete(formattedPhone);
+        inMemoryOtps.delete(normalizedEmail);
       }
       return res.status(400).json({ error: "The verification code has expired (5 minutes timeout reached). Please request a new one." });
     }
@@ -173,55 +180,55 @@ export const verifyOtp = async (req, res) => {
 
     // OTP is correct! Clear it.
     if (isMongoConnected()) {
-      await Otp.deleteOne({ phone: formattedPhone });
+      await Otp.deleteOne({ email: normalizedEmail });
     } else {
-      inMemoryOtps.delete(formattedPhone);
+      inMemoryOtps.delete(normalizedEmail);
     }
 
     // Sign up / log in user in database
     let user = null;
 
     if (isMongoConnected()) {
-      user = await User.findOne({ phone: formattedPhone });
+      user = await User.findOne({ email: normalizedEmail });
       if (!user) {
         // Create new profile
         user = await User.create({
-          phone: formattedPhone,
-          name: name?.trim() || `User_${formattedPhone.slice(-4)}`,
+          email: normalizedEmail,
+          name: name?.trim() || `User_${normalizedEmail.split("@")[0]}`,
           role: role || "Student",
         });
-        console.log(`[MONGODB] Registered new user: ${formattedPhone}`);
+        console.log(`[MONGODB] Registered new user: ${normalizedEmail}`);
       } else {
-        // Option to update existing user role/name if passed in during sign up phase
+        // Update user details if passed in
         if (name || role) {
           if (name) user.name = name.trim();
           if (role) user.role = role;
           await user.save();
         }
-        console.log(`[MONGODB] Logged in existing user: ${formattedPhone}`);
+        console.log(`[MONGODB] Logged in existing user: ${normalizedEmail}`);
       }
     } else {
       // In-memory lookup/creation
-      user = inMemoryUsers.get(formattedPhone);
+      user = inMemoryUsers.get(normalizedEmail);
       if (!user) {
         user = {
           _id: crypto.randomUUID(),
-          phone: formattedPhone,
-          name: name?.trim() || `User_${formattedPhone.slice(-4)}`,
+          email: normalizedEmail,
+          name: name?.trim() || `User_${normalizedEmail.split("@")[0]}`,
           role: role || "Student",
           streak: 1,
           trustScore: 4.5,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
-        inMemoryUsers.set(formattedPhone, user);
-        console.log(`[IN-MEMORY DB] Registered new user: ${formattedPhone}`);
+        inMemoryUsers.set(normalizedEmail, user);
+        console.log(`[IN-MEMORY DB] Registered new user: ${normalizedEmail}`);
       } else {
         if (name) user.name = name.trim();
         if (role) user.role = role;
         user.updatedAt = new Date();
-        inMemoryUsers.set(formattedPhone, user);
-        console.log(`[IN-MEMORY DB] Logged in existing user: ${formattedPhone}`);
+        inMemoryUsers.set(normalizedEmail, user);
+        console.log(`[IN-MEMORY DB] Logged in existing user: ${normalizedEmail}`);
       }
     }
 
@@ -229,7 +236,7 @@ export const verifyOtp = async (req, res) => {
     const token = jwt.sign(
       {
         id: user._id.toString(),
-        phone: user.phone,
+        email: user.email,
         role: user.role,
       },
       JWT_SECRET,
@@ -253,14 +260,14 @@ export const verifyOtp = async (req, res) => {
  */
 export const getMe = async (req, res) => {
   try {
-    const { id, phone } = req.user;
+    const { id, email } = req.user;
 
     let user = null;
 
     if (isMongoConnected()) {
       user = await User.findById(id);
     } else {
-      user = inMemoryUsers.get(phone);
+      user = inMemoryUsers.get(email);
     }
 
     if (!user) {

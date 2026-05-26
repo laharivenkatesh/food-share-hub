@@ -7,7 +7,7 @@ export interface MockProfile {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   role: Role;
   streak: number;
   trustScore: number;
@@ -17,7 +17,7 @@ export interface MockProfile {
 // Emulate a standard Supabase User for compatibility with existing modules
 export interface JWTUser {
   id: string;
-  phone: string;
+  phone?: string;
   email: string;
   role: Role;
 }
@@ -26,9 +26,9 @@ interface AuthContextValue {
   user: JWTUser | null;
   profile: MockProfile | null;
   loading: boolean;
-  sendOtp: (phone: string) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
+  sendOtp: (email: string) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
   verifyOtp: (
-    phone: string,
+    email: string,
     otp: string,
     name?: string,
     role?: Role
@@ -66,16 +66,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Map MongoDB user to standard JWTUser and MockProfile structures for compatibility
         const mappedUser: JWTUser = {
           id: dbUser._id || dbUser.id,
-          phone: dbUser.phone,
-          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+          phone: dbUser.phone || "",
+          email: dbUser.email,
           role: dbUser.role,
         };
 
         const mappedProfile: MockProfile = {
           id: dbUser._id || dbUser.id,
           name: dbUser.name || "New User",
-          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
-          phone: dbUser.phone,
+          email: dbUser.email,
+          phone: dbUser.phone || "",
           role: dbUser.role || "Student",
           streak: dbUser.streak || 1,
           trustScore: dbUser.trustScore || 4.5,
@@ -100,14 +100,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Triggers OTP sending endpoint on our Express backend (Twilio SMS)
+   * Triggers OTP sending endpoint on our Express backend (Google SMTP)
    */
-  const sendOtp = async (phone: string) => {
+  const sendOtp = async (email: string) => {
     try {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email }),
       });
 
       const data = await res.json();
@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return {
         ok: true as const,
-        dev_otp: data.dev_otp, // Returned in sandbox mode when Twilio is not configured
+        dev_otp: data.dev_otp, // Returned in sandbox mode when SMTP is not configured
       };
     } catch (err: any) {
       return { ok: false as const, error: err.message || "Connection to auth server failed." };
@@ -127,12 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * Verifies the OTP code on the backend and establishes a JWT session
    */
-  const verifyOtp = async (phone: string, otp: string, name?: string, role?: Role) => {
+  const verifyOtp = async (email: string, otp: string, name?: string, role?: Role) => {
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp, name, role }),
+        body: JSON.stringify({ email, otp, name, role }),
       });
 
       const data = await res.json();
@@ -145,16 +145,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const mappedUser: JWTUser = {
         id: dbUser._id || dbUser.id,
-        phone: dbUser.phone,
-        email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+        phone: dbUser.phone || "",
+        email: dbUser.email,
         role: dbUser.role,
       };
 
       const mappedProfile: MockProfile = {
         id: dbUser._id || dbUser.id,
         name: dbUser.name || "New User",
-        email: `${dbUser.phone.replace("+", "")}@zerra.local`,
-        phone: dbUser.phone,
+        email: dbUser.email,
+        phone: dbUser.phone || "",
         role: dbUser.role || "Student",
         streak: dbUser.streak || 1,
         trustScore: dbUser.trustScore || 4.5,
@@ -190,8 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mappedProfile: MockProfile = {
           id: dbUser._id || dbUser.id,
           name: dbUser.name || "New User",
-          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
-          phone: dbUser.phone,
+          email: dbUser.email,
+          phone: dbUser.phone || "",
           role: dbUser.role || "Student",
           streak: dbUser.streak || 1,
           trustScore: dbUser.trustScore || 4.5,
