@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import type { Session, User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 
 export type Role = "Student" | "Provider" | "NGO";
 
@@ -8,195 +7,225 @@ export interface MockProfile {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
+  phone: string;
   role: Role;
+  streak: number;
+  trustScore: number;
   created_at: string;
 }
 
+// Emulate a standard Supabase User for compatibility with existing modules
+export interface JWTUser {
+  id: string;
+  phone: string;
+  email: string;
+  role: Role;
+}
+
 interface AuthContextValue {
-  user: User | null;
+  user: JWTUser | null;
   profile: MockProfile | null;
-  session: Session | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-  signup: (data: {
-    name: string;
-    email: string;
-    phone?: string;
-    password: string;
-    role: Role;
-  }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  sendOtp: (phone: string) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
+  verifyOtp: (
+    phone: string,
+    otp: string,
+    name?: string,
+    role?: Role
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<JWTUser | null>(null);
   const [profile, setProfile] = useState<MockProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch profile row from the profiles table
-  const fetchProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+  // Initialize and restore session from localStorage JWT
+  const initializeAuth = async () => {
+    const token = localStorage.getItem("zerra_jwt_token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
-      if (error) {
-        console.error("fetchProfile error:", error);
-        return null;
+    try {
+      const response = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const dbUser = data.user;
+
+        // Map MongoDB user to standard JWTUser and MockProfile structures for compatibility
+        const mappedUser: JWTUser = {
+          id: dbUser._id || dbUser.id,
+          phone: dbUser.phone,
+          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+          role: dbUser.role,
+        };
+
+        const mappedProfile: MockProfile = {
+          id: dbUser._id || dbUser.id,
+          name: dbUser.name || "New User",
+          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+          phone: dbUser.phone,
+          role: dbUser.role || "Student",
+          streak: dbUser.streak || 1,
+          trustScore: dbUser.trustScore || 4.5,
+          created_at: dbUser.createdAt || new Date().toISOString(),
+        };
+
+        setUser(mappedUser);
+        setProfile(mappedProfile);
+      } else {
+        // Token has expired or is invalid, clean it up
+        localStorage.removeItem("zerra_jwt_token");
       }
-      return data as MockProfile;
     } catch (err) {
-      console.error("fetchProfile exception:", err);
-      return null;
+      console.error("Auth restoration error:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const initializeAuth = async () => {
-      if (!isSupabaseConfigured) {
-        if (isMounted) setLoading(false);
-        return;
-      }
-      try {
-        // Fallback timeout to prevent permanent deadlocks
-        const timeout = setTimeout(() => {
-          if (isMounted && loading) {
-            console.warn("Auth initialization timed out! Clearing corrupted browser cache.");
-            try {
-              for (let i = localStorage.length - 1; i >= 0; i--) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
-                  localStorage.removeItem(key);
-                }
-              }
-            } catch (e) {}
-            setLoading(false);
-          }
-        }, 1500);
-
-        // Get the current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        clearTimeout(timeout);
-
-        if (sessionError) {
-          console.error("Session error:", sessionError);
-          if (isMounted) {
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (isMounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-
-          if (session?.user) {
-            const p = await fetchProfile(session.user.id);
-            if (isMounted) {
-              setProfile(p);
-            }
-          }
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Auth initialization error:", err);
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
     initializeAuth();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (isMounted) {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id);
-          if (isMounted) {
-            setProfile(p);
-          }
-        } else {
-          if (isMounted) {
-            setProfile(null);
-          }
-        }
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
   }, []);
 
-  // login
-  const login: AuthContextValue["login"] = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
-    });
+  /**
+   * Triggers OTP sending endpoint on our Express backend
+   */
+  const sendOtp = async (phone: string) => {
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
 
-    if (error) return { ok: false, error: error.message };
-    return { ok: true };
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false as const, error: data.error || "Failed to send OTP" };
+      }
+
+      return {
+        ok: true as const,
+        dev_otp: data.dev_otp, // Returned in sandbox mode
+      };
+    } catch (err: any) {
+      return { ok: false as const, error: err.message || "Connection to auth server failed." };
+    }
   };
 
-  // signup — ONLY create auth user, let trigger handle profile
-  const signup: AuthContextValue["signup"] = async ({
-    name,
-    email,
-    phone,
-    password,
-    role,
-  }) => {
-    if (!name.trim()) return { ok: false, error: "Name required" };
-    if (password.length < 6)
-      return { ok: false, error: "Password must be 6+ characters" };
+  /**
+   * Verifies the OTP code on the backend and establishes a JWT session
+   */
+  const verifyOtp = async (phone: string, otp: string, name?: string, role?: Role) => {
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp, name, role }),
+      });
 
-    // Create the Supabase Auth user with metadata for the trigger
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        data: {
-          name: name.trim(),
-          phone: phone?.trim() || null,
-          role: role,
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false as const, error: data.error || "Verification failed" };
+      }
+
+      const { token, user: dbUser } = data;
+      localStorage.setItem("zerra_jwt_token", token);
+
+      const mappedUser: JWTUser = {
+        id: dbUser._id || dbUser.id,
+        phone: dbUser.phone,
+        email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+        role: dbUser.role,
+      };
+
+      const mappedProfile: MockProfile = {
+        id: dbUser._id || dbUser.id,
+        name: dbUser.name || "New User",
+        email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+        phone: dbUser.phone,
+        role: dbUser.role || "Student",
+        streak: dbUser.streak || 1,
+        trustScore: dbUser.trustScore || 4.5,
+        created_at: dbUser.createdAt || new Date().toISOString(),
+      };
+
+      setUser(mappedUser);
+      setProfile(mappedProfile);
+      return { ok: true as const };
+    } catch (err: any) {
+      return { ok: false as const, error: err.message || "Connection to auth server failed." };
+    }
+  };
+
+  /**
+   * Refresh current profile details
+   */
+  const refreshProfile = async () => {
+    const token = localStorage.getItem("zerra_jwt_token");
+    if (!token) return;
+
+    try {
+      const response = await fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
         },
-      },
-    });
+      });
 
-    if (signUpError) return { ok: false, error: signUpError.message };
-    if (!data.user)
-      return { ok: false, error: "Signup failed — please try again." };
+      if (response.ok) {
+        const data = await response.json();
+        const dbUser = data.user;
 
-    // Wait a moment for the trigger to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+        const mappedProfile: MockProfile = {
+          id: dbUser._id || dbUser.id,
+          name: dbUser.name || "New User",
+          email: `${dbUser.phone.replace("+", "")}@zerra.local`,
+          phone: dbUser.phone,
+          role: dbUser.role || "Student",
+          streak: dbUser.streak || 1,
+          trustScore: dbUser.trustScore || 4.5,
+          created_at: dbUser.createdAt || new Date().toISOString(),
+        };
 
-    return { ok: true };
+        setProfile(mappedProfile);
+      }
+    } catch (err) {
+      console.error("Error refreshing profile:", err);
+    }
   };
 
-  // logout
+  /**
+   * Purges JWT session and log out
+   */
   const logout = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem("zerra_jwt_token");
+    setUser(null);
+    setProfile(null);
+    toast.success("Logged out successfully");
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, session, loading, login, signup, logout }}
+      value={{
+        user,
+        profile,
+        loading,
+        sendOtp,
+        verifyOtp,
+        logout,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -233,9 +233,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
 
-              <button onClick={handleSignOut} className="text-xs font-bold text-primary-deep hover:underline">
-                Sign Out
-              </button>
+              <Link
+                to="/dashboard"
+                className="px-3 py-1.5 rounded-xl bg-primary-deep text-primary-deep-foreground text-xs font-extrabold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+              >
+                Dashboard
+              </Link>
             </div>
           )}
         </header>

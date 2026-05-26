@@ -6,7 +6,7 @@ export default function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured && !user) {
     return (
       <div className="p-8 text-center mt-20">
         <h2 className="text-xl font-bold text-destructive mb-2">Configuration Missing</h2>
