@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Leaf, Mail, Phone, Lock, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon } from "lucide-react";
+import { Leaf, Mail, Phone, Lock, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 export default function Auth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { sendOtp, verifyOtp, user } = useAuth();
+  const { login, sendOtp, verifyOtp, resetPassword, user } = useAuth();
 
   // Navigation redirect destination
   const from = location.state?.from?.pathname || "/";
@@ -29,6 +29,8 @@ export default function Auth() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [agreed, setAgreed] = useState(true); // default agreed
@@ -92,6 +94,22 @@ export default function Auth() {
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error("Please enter your email address first.");
+      return;
+    }
+    setBusy(true);
+    const res = await resetPassword(email);
+    setBusy(false);
+    
+    if (!res.ok) {
+      toast.error("error" in res ? res.error : "Failed to send reset email.");
+      return;
+    }
+    toast.success("Password reset email sent! Check your inbox.");
+  };
+
   // Step 1: Submit Email to receive OTP
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,12 +147,30 @@ export default function Auth() {
       }
     }
 
+    if (authMode === "login") {
+      if (!password) {
+        toast.error("Please enter a password.");
+        return;
+      }
+      setBusy(true);
+      const res = await login(email, password);
+      setBusy(false);
+
+      if (!res.ok) {
+        toast.error("error" in res ? res.error : "Failed to log in.");
+        return;
+      }
+      toast.success("Login successful!");
+      // The useEffect will catch the user state change and redirect
+      return;
+    }
+
     setBusy(true);
     const res = await sendOtp(
       email, 
-      authMode === "signup" ? password : undefined, 
-      authMode === "signup" ? name : undefined, 
-      authMode === "signup" ? phone : undefined, 
+      password, 
+      name, 
+      phone, 
       authMode
     );
     setBusy(false);
@@ -385,28 +421,46 @@ export default function Auth() {
                 </div>
               </div>
 
+              {/* Password field (Both login and signup) */}
+              <div className="animate-fade-up">
+                <div className="flex justify-between items-end mb-1.5">
+                  <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Password
+                  </label>
+                  {authMode === "login" && (
+                    <button 
+                      type="button" 
+                      onClick={handleForgotPassword}
+                      className="text-[10px] font-bold text-primary-deep hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-muted-foreground">
+                    <Lock className="w-4 h-4" />
+                  </span>
+                  <input
+                    className="input-field pl-10 pr-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                    placeholder="••••••••"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
               {authMode === "signup" && (
                 <div className="space-y-4 animate-fade-up">
-                  {/* Password field */}
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-3 text-muted-foreground">
-                        <Lock className="w-4 h-4" />
-                      </span>
-                      <input
-                        className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
-                        placeholder="••••••••"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required={authMode === "signup"}
-                      />
-                    </div>
-                  </div>
-
                   {/* Confirm Password field */}
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
@@ -417,13 +471,20 @@ export default function Auth() {
                         <Lock className="w-4 h-4" />
                       </span>
                       <input
-                        className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                        className="input-field pl-10 pr-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
                         placeholder="••••••••"
-                        type="password"
+                        type={showConfirmPassword ? "text" : "password"}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         required={authMode === "signup"}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
 
@@ -454,7 +515,7 @@ export default function Auth() {
                   </>
                 ) : (
                   <>
-                    {authMode === "login" ? "Get Verification Code" : "Register & Get OTP"}{" "}
+                    {authMode === "login" ? "Log In" : "Register & Get OTP"}{" "}
                     <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                   </>
                 )}

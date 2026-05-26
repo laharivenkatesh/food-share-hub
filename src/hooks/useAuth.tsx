@@ -20,12 +20,14 @@ interface AuthContextValue {
   user: JWTUser | null;
   profile: UserProfile | null;
   loading: boolean;
+  login: (email: string, password?: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   sendOtp: (email: string, password?: string, name?: string, phone?: string, mode?: "signup" | "login") => Promise<{ ok: true } | { ok: false; error: string }>;
   verifyOtp: (
     email: string,
     otp: string,
     type: "signup" | "recovery" | "magiclink"
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  resetPassword: (email: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -95,6 +97,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Logs in a user using email and password
+   */
+  const login = async (email: string, password?: string) => {
+    try {
+      if (!password) throw new Error("Password is required for login.");
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+      return { ok: true as const };
+    } catch (err: any) {
+      return { ok: false as const, error: err.message || "Failed to log in." };
+    }
+  };
+
+  /**
    * Triggers OTP sending via Supabase Auth
    */
   const sendOtp = async (email: string, password?: string, name?: string, phone?: string, mode?: "signup" | "login") => {
@@ -152,6 +171,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Triggers a password reset email
+   */
+  const resetPassword = async (email: string) => {
+    try {
+      if (!email) throw new Error("Email is required.");
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/auth?mode=reset",
+      });
+      if (error) throw error;
+      return { ok: true as const };
+    } catch (err: any) {
+      return { ok: false as const, error: err.message || "Failed to send reset email." };
+    }
+  };
+
+  /**
    * Refresh current profile details
    */
   const refreshProfile = async () => {
@@ -175,8 +210,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         loading,
+        login,
         sendOtp,
         verifyOtp,
+        resetPassword,
         logout,
         refreshProfile,
       }}
