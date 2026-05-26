@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Leaf, Phone, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon } from "lucide-react";
+import { Leaf, Phone, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, GraduationCap, Store, Building } from "lucide-react";
 import { useAuth, Role } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const roles: Role[] = ["Student", "Provider", "NGO"];
+
+const roleIcons: Record<Role, React.ComponentType<{ className?: string }>> = {
+  Student: GraduationCap,
+  Provider: Store,
+  NGO: Building,
+};
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -23,6 +29,7 @@ export default function Auth() {
 
   // Auth flow states
   const [step, setStep] = useState<"phone" | "otp">("phone");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("Student");
@@ -97,12 +104,22 @@ export default function Auth() {
       return;
     }
 
+    if (authMode === "signup" && !name.trim()) {
+      toast.error("Please enter your full name.");
+      return;
+    }
+
+    if (authMode === "signup" && !agreed) {
+      toast.error("Please accept the food quality and sharing guidelines.");
+      return;
+    }
+
     setBusy(true);
     const res = await sendOtp(phone);
     setBusy(false);
 
     if (!res.ok) {
-      toast.error(res.error);
+      toast.error("error" in res ? res.error : "An error occurred");
       return;
     }
 
@@ -134,7 +151,7 @@ export default function Auth() {
     setBusy(false);
 
     if (!res.ok) {
-      toast.error(res.error);
+      toast.error("error" in res ? res.error : "An error occurred");
       return;
     }
 
@@ -211,11 +228,17 @@ export default function Auth() {
     }
 
     setBusy(true);
-    const res = await verifyOtp(phone, otpCode, name, role);
+    // Only pass name and role if in signup mode
+    const res = await verifyOtp(
+      phone,
+      otpCode,
+      authMode === "signup" ? name : undefined,
+      authMode === "signup" ? role : undefined
+    );
     setBusy(false);
 
     if (!res.ok) {
-      toast.error(res.error);
+      toast.error("error" in res ? res.error : "An error occurred");
       return;
     }
 
@@ -231,238 +254,324 @@ export default function Auth() {
   }, [otpValues]);
 
   return (
-    <div className="min-h-screen bg-hero flex items-center justify-center p-6 transition-all duration-300">
-      <div className="w-full max-w-md card-soft p-8 space-y-7 animate-fade-up border border-border bg-card/90 backdrop-blur-md">
+    <div className="min-h-screen bg-hero flex items-center justify-center p-4 sm:p-6 md:p-10 transition-all duration-300 relative overflow-hidden">
+      {/* Decorative Floating Blobs for eco-branding */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/20 blur-[80px] pointer-events-none animate-pulse-soft" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-secondary/30 blur-[80px] pointer-events-none animate-pulse-soft" style={{ animationDelay: "1s" }} />
+
+      <div className="w-full max-w-4xl bg-card/85 backdrop-blur-xl border border-border/80 rounded-[2.5rem] shadow-card overflow-hidden grid grid-cols-1 lg:grid-cols-2 animate-fade-up">
         
-        {/* Dynamic Step Header */}
-        <div className="text-center space-y-2">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-primary-deep flex items-center justify-center shadow-soft transform hover:scale-105 transition-transform">
-            <Leaf className="w-9 h-9 text-primary-deep-foreground" />
+        {/* LEFT PANEL: Branding & Visuals (Hidden on small screens, gorgeous on lg) */}
+        <div className="hidden lg:flex flex-col justify-between p-12 bg-gradient-to-br from-primary-deep/90 via-primary-deep to-emerald-950 text-white relative overflow-hidden">
+          {/* Subtle nature grid pattern */}
+          <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px]" />
+          
+          <div className="relative z-10 flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+              <Leaf className="w-5 h-5 text-primary" />
+            </div>
+            <span className="font-extrabold text-xl tracking-tight text-white">Zerra Food Hub</span>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground bg-gradient-to-r from-emerald-600 to-green-500 bg-clip-text text-transparent">
-            Zerra Food Hub
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {step === "phone"
-              ? "Share leftover food, save the planet. Authenticate to continue."
-              : "We have dispatched a 6-digit security code."}
-          </p>
+
+          <div className="relative z-10 space-y-6 my-auto">
+            <h2 className="text-4xl font-extrabold leading-tight text-white tracking-tight animate-fade-up">
+              Share Surplus, <br />
+              <span className="text-primary">Minimize Waste.</span>
+            </h2>
+            <p className="text-white/80 text-sm leading-relaxed max-w-md">
+              Join our community-driven platform connecting local donors, NGOs, and students. Together, we can redirect surplus food to those who need it most.
+            </p>
+            
+            {/* Soft metrics or highlights */}
+            <div className="grid grid-cols-2 gap-4 pt-6">
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                <p className="text-xs text-white/60 font-semibold uppercase tracking-wider">Saved Food</p>
+                <p className="text-2xl font-black text-white mt-1">12,450 kg</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                <p className="text-xs text-white/60 font-semibold uppercase tracking-wider">Active Partners</p>
+                <p className="text-2xl font-black text-white mt-1">450+</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative z-10 text-xs text-white/50 flex justify-between">
+            <span>© 2026 Zerra Inc.</span>
+            <span>Eco-Friendly Initiative</span>
+          </div>
         </div>
 
-        {step === "phone" ? (
-          /* ================= STEP 1: PHONE NUMBER ENTRY ================= */
-          <form onSubmit={handleSendOtp} className="space-y-5 animate-fade-up">
-            
-            <div className="space-y-4">
-              
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-3.5 text-muted-foreground">
-                    <UserIcon className="w-5 h-5" />
-                  </span>
-                  <input
-                    className="input-field pl-12"
-                    placeholder="E.g. John Doe"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                  Mobile Number
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-3.5 text-muted-foreground font-bold text-sm">
-                    <Phone className="w-5 h-5 inline mr-1" />
-                  </span>
-                  <input
-                    className="input-field pl-12"
-                    placeholder="Enter 10-digit number or +E.164"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    required
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
-                  Format: E.164 (+1234567890) or plain 10-digit format.
-                </p>
-              </div>
-
-              {/* Roles Selector */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Community Account Role
-                </label>
-                <div className="flex gap-2.5">
-                  {roles.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setRole(r)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold capitalize transition-all border ${
-                        role === r
-                          ? "bg-primary-deep text-primary-deep-foreground border-primary-deep shadow-soft"
-                          : "bg-muted/40 hover:bg-muted/80 text-muted-foreground border-border"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+        {/* RIGHT PANEL: Form inputs */}
+        <div className="p-8 sm:p-12 flex flex-col justify-center space-y-7 bg-card/60 backdrop-blur-md">
+          {/* Header on mobile shows logo, on desktop just header */}
+          <div className="text-center lg:text-left space-y-2">
+            <div className="lg:hidden w-14 h-14 mx-auto rounded-2xl bg-primary-deep flex items-center justify-center shadow-soft mb-3">
+              <Leaf className="w-8 h-8 text-primary-deep-foreground" />
             </div>
+            
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+              {step === "phone"
+                ? authMode === "login"
+                  ? "Welcome Back"
+                  : "Create Account"
+                : "Verify Identity"}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {step === "phone"
+                ? authMode === "login"
+                  ? "Sign in with your registered phone number."
+                  : "Join the food sharing revolution today."
+                : `We sent a code to ${phone}.`}
+            </p>
+          </div>
 
-            {/* Terms and Conditions Checkbox */}
-            <div className="pt-2">
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
+          {step === "phone" ? (
+            <div className="space-y-6">
+              {/* Tab Selector */}
+              <div className="relative flex p-1 bg-muted rounded-2xl border border-border">
+                {/* Active slider background */}
+                <div 
+                  className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl bg-card shadow-soft transition-all duration-300 ease-out transform ${
+                    authMode === "signup" ? "translate-x-[calc(100%+4px)]" : "translate-x-0"
+                  }`} 
                 />
-                <span className="text-xs text-muted-foreground leading-relaxed">
-                  I accept the food quality and sharing guidelines.
-                </span>
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              disabled={busy || !agreed}
-              className="btn-primary flex items-center justify-center gap-2 group !mt-4"
-            >
-              {busy ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" /> Dispatching Code...
-                </>
-              ) : (
-                <>
-                  Send OTP Code <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </button>
-
-          </form>
-        ) : (
-          /* ================= STEP 2: OTP VERIFICATION ================= */
-          <form onSubmit={handleVerifyOtp} className="space-y-6 animate-fade-up">
-            
-            {/* Display Target Phone */}
-            <div className="flex items-center justify-between p-3.5 bg-muted/50 rounded-2xl border border-border">
-              <div className="space-y-0.5">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Sending OTP to</p>
-                <p className="text-sm font-extrabold text-foreground">{phone}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep("phone");
-                  setSandboxOtp(null);
-                }}
-                className="p-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-white dark:bg-card border border-border rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1"
-              >
-                <ArrowLeft className="w-3 h-3" /> Change
-              </button>
-            </div>
-
-            {/* OTP Input Grid */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider text-center">
-                Enter 6-Digit OTP Code
-              </label>
-              
-              <div className="flex justify-between gap-2.5">
-                {otpValues.map((val, idx) => (
-                  <input
-                    key={idx}
-                    ref={(el) => (inputRefs.current[idx] = el)}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={val}
-                    onChange={(e) => handleOtpChange(idx, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                    onPaste={idx === 0 ? handleOtpPaste : undefined}
-                    className="w-12 h-14 text-center text-xl font-extrabold text-foreground bg-input hover:bg-input/80 focus:bg-white focus:ring-2 focus:ring-ring border border-border rounded-xl transition-all shadow-sm focus:outline-none"
-                    autoFocus={idx === 0}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Timers & Expiration Notice */}
-            <div className="flex items-center justify-between text-xs font-bold px-1">
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <KeyRound className="w-3.5 h-3.5" />
-                <span>Code expires in:</span>
-                <span className="text-urgent">{formatTime(expiryTimer)}</span>
-              </div>
-
-              {resendTimer > 0 ? (
-                <span className="text-muted-foreground">Resend in {resendTimer}s</span>
-              ) : (
+                
                 <button
                   type="button"
-                  onClick={handleResendOtp}
-                  disabled={busy}
-                  className="text-emerald-600 hover:underline hover:text-emerald-700 transition-colors flex items-center gap-1"
+                  onClick={() => setAuthMode("login")}
+                  className={`relative z-10 flex-1 py-2.5 text-center text-sm font-bold transition-colors duration-200 ${
+                    authMode === "login" ? "text-primary-deep" : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  <RefreshCw className="w-3 h-3" /> Resend OTP
+                  Log In
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("signup")}
+                  className={`relative z-10 flex-1 py-2.5 text-center text-sm font-bold transition-colors duration-200 ${
+                    authMode === "signup" ? "text-primary-deep" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Sign Up
+                </button>
+              </div>
 
-            {/* Sandbox OTP Helper Widget */}
-            {sandboxOtp && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between animate-pulse">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">SMS Sandbox Active</p>
-                  <p className="text-xs text-muted-foreground">Your debug code is: <strong className="text-emerald-600 font-extrabold text-sm">{sandboxOtp}</strong></p>
+              {/* Form Content */}
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                {authMode === "signup" && (
+                  <div className="space-y-4 animate-fade-up">
+                    <div>
+                      <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                        Full Name
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-3.5 text-muted-foreground">
+                          <UserIcon className="w-5 h-5" />
+                        </span>
+                        <input
+                          className="input-field pl-12 focus:border-primary-deep/50 focus:ring-primary-deep/20"
+                          placeholder="John Doe"
+                          type="text"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          required={authMode === "signup"}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Roles Selector with beautiful card designs */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                        Choose Account Role
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {roles.map((r) => {
+                          const isSelected = role === r;
+                          const IconComponent = roleIcons[r];
+                          return (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => setRole(r)}
+                              className={`p-3 rounded-2xl text-center border-2 transition-all flex flex-col items-center gap-1.5 ${
+                                isSelected
+                                  ? "bg-primary/20 border-primary-deep text-primary-deep shadow-soft scale-[1.02]"
+                                  : "bg-muted/40 hover:bg-muted/80 text-muted-foreground border-transparent hover:scale-[1.01]"
+                              }`}
+                            >
+                              <IconComponent className={`w-5 h-5 ${isSelected ? "text-primary-deep" : "text-muted-foreground"}`} />
+                              <span className="font-extrabold text-[11px] capitalize">{r}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                    Mobile Number
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-3.5 text-muted-foreground font-bold text-sm">
+                      <Phone className="w-5 h-5" />
+                    </span>
+                    <input
+                      className="input-field pl-12 focus:border-primary-deep/50 focus:ring-primary-deep/20"
+                      placeholder="9876543210"
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                    Format: E.164 (+1234567890) or plain 10-digit number.
+                  </p>
+                </div>
+
+                {authMode === "signup" && (
+                  <div className="pt-2 animate-fade-up">
+                    <label className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={agreed}
+                        onChange={(e) => setAgreed(e.target.checked)}
+                        className="mt-1 w-4 h-4 rounded border-gray-300 text-primary-deep focus:ring-primary-deep cursor-pointer shrink-0"
+                      />
+                      <span className="text-xs text-muted-foreground leading-relaxed select-none">
+                        I accept the food quality and sharing guidelines.
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={busy || (authMode === "signup" && !agreed)}
+                  className="btn-primary flex items-center justify-center gap-2 group mt-4 h-12"
+                >
+                  {busy ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 animate-spin" /> Dispatching...
+                    </>
+                  ) : (
+                    <>
+                      {authMode === "login" ? "Get Verification Code" : "Register & Get OTP"}{" "}
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          ) : (
+            /* OTP VERIFICATION STEP */
+            <form onSubmit={handleVerifyOtp} className="space-y-6 animate-fade-up">
+              {/* Target Phone display card */}
+              <div className="flex items-center justify-between p-4 bg-muted rounded-2xl border border-border">
+                <div>
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Sending OTP to</p>
+                  <p className="text-sm font-extrabold text-foreground">{phone}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(sandboxOtp);
-                    toast.success("OTP copied!");
+                    setStep("phone");
+                    setSandboxOtp(null);
                   }}
-                  className="px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-xs font-semibold text-primary-deep hover:text-emerald-700 bg-card border border-border rounded-xl shadow-sm hover:shadow transition-all flex items-center gap-1"
                 >
-                  Copy Code
+                  <ArrowLeft className="w-3.5 h-3.5" /> Edit
                 </button>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={busy || otpValues.join("").length < 6}
-              className="btn-primary flex items-center justify-center gap-2"
-            >
-              {busy ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" /> Verifying OTP...
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-5 h-5" /> Authenticate & Access
-                </>
+              {/* OTP Grid */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider text-center">
+                  6-Digit OTP Code
+                </label>
+                <div className="flex justify-between gap-2">
+                  {otpValues.map((val, idx) => (
+                    <input
+                      key={idx}
+                      ref={(el) => (inputRefs.current[idx] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={val}
+                      onChange={(e) => handleOtpChange(idx, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                      onPaste={idx === 0 ? handleOtpPaste : undefined}
+                      className="w-11 h-14 sm:w-12 text-center text-xl font-extrabold text-foreground bg-input hover:bg-input/80 focus:bg-white focus:ring-2 focus:ring-primary-deep focus:border-primary-deep border border-border rounded-xl transition-all shadow-sm focus:outline-none"
+                      autoFocus={idx === 0}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Expiry and Resend Timer */}
+              <div className="flex items-center justify-between text-xs font-bold px-1">
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <KeyRound className="w-4 h-4 text-muted-foreground/80" />
+                  <span>Expires in:</span>
+                  <span className="text-urgent">{formatTime(expiryTimer)}</span>
+                </div>
+
+                {resendTimer > 0 ? (
+                  <span className="text-muted-foreground">Resend in {resendTimer}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={busy}
+                    className="text-primary-deep hover:underline transition-colors flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3 animate-pulse" /> Resend OTP
+                  </button>
+                )}
+              </div>
+
+              {/* SMS Sandbox Active notification */}
+              {sandboxOtp && (
+                <div className="p-4 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-between animate-fade-up">
+                  <div>
+                    <p className="text-[10px] text-primary-deep font-bold uppercase tracking-wider">SMS Sandbox Mode</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">OTP is: <strong className="text-primary-deep font-extrabold text-sm">{sandboxOtp}</strong></p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(sandboxOtp);
+                      toast.success("OTP copied!");
+                    }}
+                    className="px-2.5 py-1 text-[10px] font-bold text-primary-deep hover:bg-primary/20 border border-primary/30 rounded-lg transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
               )}
-            </button>
 
-          </form>
-        )}
-
+              <button
+                type="submit"
+                disabled={busy || otpValues.join("").length < 6}
+                className="btn-primary flex items-center justify-center gap-2 h-12"
+              >
+                {busy ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" /> Verifying...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-5 h-5" /> Verify & Access
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
-}
+}
