@@ -15,6 +15,10 @@ const userSchema = new mongoose.Schema(
       required: false,
       trim: true,
     },
+    password: {
+      type: String,
+      required: false, // can be optional if we just want OTP fallback or social, but we'll save it if supplied
+    },
     name: {
       type: String,
       default: "New User",

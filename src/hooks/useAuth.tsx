@@ -31,7 +31,9 @@ interface AuthContextValue {
     email: string,
     otp: string,
     name?: string,
-    role?: Role
+    role?: Role,
+    phone?: string,
+    password?: string
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -127,12 +129,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * Verifies the OTP code on the backend and establishes a JWT session
    */
-  const verifyOtp = async (email: string, otp: string, name?: string, role?: Role) => {
+  const verifyOtp = async (
+    email: string,
+    otp: string,
+    name?: string,
+    role?: Role,
+    phone?: string,
+    password?: string
+  ) => {
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, name, role }),
+        body: JSON.stringify({ email, otp, name, role, phone, password }),
       });
 
       const data = await res.json();

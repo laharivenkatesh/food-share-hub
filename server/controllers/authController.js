@@ -142,7 +142,7 @@ export const sendOtp = async (req, res) => {
  * POST /api/auth/verify-otp
  */
 export const verifyOtp = async (req, res) => {
-  const { email, otp, name, role } = req.body;
+  const { email, otp, name, role, phone, password } = req.body;
 
   if (!email || !otp) {
     return res.status(400).json({ error: "Email address and OTP are required" });
@@ -196,13 +196,17 @@ export const verifyOtp = async (req, res) => {
           email: normalizedEmail,
           name: name?.trim() || `User_${normalizedEmail.split("@")[0]}`,
           role: role || "Student",
+          phone: phone || undefined,
+          password: password || undefined,
         });
         console.log(`[MONGODB] Registered new user: ${normalizedEmail}`);
       } else {
         // Update user details if passed in
-        if (name || role) {
+        if (name || role || phone || password) {
           if (name) user.name = name.trim();
           if (role) user.role = role;
+          if (phone) user.phone = phone.trim();
+          if (password) user.password = password;
           await user.save();
         }
         console.log(`[MONGODB] Logged in existing user: ${normalizedEmail}`);
@@ -216,6 +220,8 @@ export const verifyOtp = async (req, res) => {
           email: normalizedEmail,
           name: name?.trim() || `User_${normalizedEmail.split("@")[0]}`,
           role: role || "Student",
+          phone: phone || undefined,
+          password: password || undefined,
           streak: 1,
           trustScore: 4.5,
           createdAt: new Date(),
@@ -226,6 +232,8 @@ export const verifyOtp = async (req, res) => {
       } else {
         if (name) user.name = name.trim();
         if (role) user.role = role;
+        if (phone) user.phone = phone.trim();
+        if (password) user.password = password;
         user.updatedAt = new Date();
         inMemoryUsers.set(normalizedEmail, user);
         console.log(`[IN-MEMORY DB] Logged in existing user: ${normalizedEmail}`);

@@ -1,16 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Leaf, Mail, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, GraduationCap, Store, Building } from "lucide-react";
-import { useAuth, Role } from "@/hooks/useAuth";
+import { Leaf, Mail, Phone, Lock, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-
-const roles: Role[] = ["Student", "Provider", "NGO"];
-
-const roleIcons: Record<Role, React.ComponentType<{ className?: string }>> = {
-  Student: GraduationCap,
-  Provider: Store,
-  NGO: Building,
-};
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -30,9 +22,14 @@ export default function Auth() {
   // Auth flow states
   const [step, setStep] = useState<"email" | "otp">("email");
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  
+  // Signup/Login fields
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Role>("Student");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [busy, setBusy] = useState(false);
   const [agreed, setAgreed] = useState(true); // default agreed
 
@@ -110,14 +107,27 @@ export default function Auth() {
       return;
     }
 
-    if (authMode === "signup" && !name.trim()) {
-      toast.error("Please enter your full name.");
-      return;
-    }
-
-    if (authMode === "signup" && !agreed) {
-      toast.error("Please accept the food quality and sharing guidelines.");
-      return;
+    if (authMode === "signup") {
+      if (!name.trim()) {
+        toast.error("Please enter your full name.");
+        return;
+      }
+      if (!phone.trim()) {
+        toast.error("Please enter your mobile number.");
+        return;
+      }
+      if (!password) {
+        toast.error("Please enter a password.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        toast.error("Passwords do not match. Please verify.");
+        return;
+      }
+      if (!agreed) {
+        toast.error("Please accept the food quality and sharing guidelines.");
+        return;
+      }
     }
 
     setBusy(true);
@@ -238,7 +248,9 @@ export default function Auth() {
       email,
       otpCode,
       authMode === "signup" ? name : undefined,
-      authMode === "signup" ? role : undefined
+      authMode === "signup" ? "Student" : undefined, // Hardcoded standard role
+      authMode === "signup" ? phone : undefined,
+      authMode === "signup" ? password : undefined
     );
     setBusy(false);
 
@@ -316,6 +328,7 @@ export default function Auth() {
             <form onSubmit={handleSendOtp} className="space-y-4">
               {authMode === "signup" && (
                 <div className="space-y-4 animate-fade-up">
+                  {/* Name field */}
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
                       Full Name
@@ -335,36 +348,29 @@ export default function Auth() {
                     </div>
                   </div>
 
-                  {/* Roles Selector with beautiful card designs */}
-                  <div className="space-y-1.5">
+                  {/* Phone Number field */}
+                  <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                      Choose Account Role
+                      Phone Number
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {roles.map((r) => {
-                        const isSelected = role === r;
-                        const IconComponent = roleIcons[r];
-                        return (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setRole(r)}
-                            className={`p-2 rounded-xl text-center border transition-all flex flex-col items-center gap-1 ${
-                              isSelected
-                                ? "bg-primary/20 border-primary-deep text-primary-deep shadow-sm scale-[1.02]"
-                                : "bg-muted/40 hover:bg-muted/80 text-muted-foreground border-transparent hover:scale-[1.01]"
-                            }`}
-                          >
-                            <IconComponent className={`w-4 h-4 ${isSelected ? "text-primary-deep" : "text-muted-foreground"}`} />
-                            <span className="font-extrabold text-[9px] capitalize">{r}</span>
-                          </button>
-                        );
-                      })}
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-3 text-muted-foreground">
+                        <Phone className="w-4 h-4" />
+                      </span>
+                      <input
+                        className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                        placeholder="9876543210"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        required={authMode === "signup"}
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
+              {/* Email Address field */}
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
                   Email Address
@@ -382,24 +388,63 @@ export default function Auth() {
                     required
                   />
                 </div>
-                <p className="text-[9px] text-muted-foreground mt-1 leading-relaxed">
-                  We'll email you a secure 6-digit code to verify your identity.
-                </p>
               </div>
 
               {authMode === "signup" && (
-                <div className="pt-1 animate-fade-up">
-                  <label className="flex items-start gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => setAgreed(e.target.checked)}
-                      className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-primary-deep focus:ring-primary-deep cursor-pointer shrink-0"
-                    />
-                    <span className="text-[10px] text-muted-foreground leading-snug select-none">
-                      I accept the food quality and sharing guidelines.
-                    </span>
-                  </label>
+                <div className="space-y-4 animate-fade-up">
+                  {/* Password field */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-3 text-muted-foreground">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                      <input
+                        className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                        placeholder="••••••••"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required={authMode === "signup"}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Confirm Password field */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-3 text-muted-foreground">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                      <input
+                        className="input-field pl-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                        placeholder="••••••••"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required={authMode === "signup"}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-1 animate-fade-up">
+                    <label className="flex items-start gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={agreed}
+                        onChange={(e) => setAgreed(e.target.checked)}
+                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-primary-deep focus:ring-primary-deep cursor-pointer shrink-0"
+                      />
+                      <span className="text-[10px] text-muted-foreground leading-snug select-none">
+                        I accept the food quality and sharing guidelines.
+                      </span>
+                    </label>
+                  </div>
                 </div>
               )}
 
