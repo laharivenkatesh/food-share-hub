@@ -127,56 +127,41 @@ export const sendOtp = async (req, res) => {
 };
 
 /**
- * Controller to verify OTP and issue JWT session token
+ * Controller to verify Firebase ID token and issue JWT session token
  * POST /api/auth/verify-otp
  */
 export const verifyOtp = async (req, res) => {
-  const { phone, otp, name, role } = req.body;
+  const { idToken, name, role } = req.body;
 
-  if (!phone || !otp) {
-    return res.status(400).json({ error: "Mobile number and OTP are required" });
-  }
-
-  // Normalize phone
-  let formattedPhone = phone.trim();
-  if (/^\d{10}$/.test(formattedPhone) && !formattedPhone.startsWith("+")) {
-    formattedPhone = `+91${formattedPhone}`;
+  if (!idToken) {
+    return res.status(400).json({ error: "Firebase ID token is required" });
   }
 
   try {
-    let otpRecord = null;
-
-    if (isMongoConnected()) {
-      otpRecord = await Otp.findOne({ phone: formattedPhone });
-    } else {
-      otpRecord = inMemoryOtps.get(formattedPhone);
-    }
-
-    if (!otpRecord) {
-      return res.status(400).json({ error: "No verification code has been sent to this number, or it has expired." });
-    }
-
-    // Verify expiration
-    if (new Date() > new Date(otpRecord.expiresAt)) {
-      if (isMongoConnected()) {
-        await Otp.deleteOne({ phone: formattedPhone });
-      } else {
-        inMemoryOtps.delete(formattedPhone);
+    const firebaseApiKey = process.env.FIREBASE_API_KEY || "AIzaSyAeu92rfYKn1RubhnxsWS5NVJKChNIJ18A";
+    
+    // Call Google Identity Toolkit API to verify Firebase ID Token
+    const verifyResponse = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
       }
-      return res.status(400).json({ error: "The verification code has expired (5 minutes timeout reached). Please request a new one." });
+    );
+
+    const verifyData = await verifyResponse.json();
+    if (!verifyResponse.ok) {
+      console.error("Firebase ID Token verification failed:", verifyData);
+      return res.status(400).json({ error: "Invalid or expired Firebase verification session." });
     }
 
-    // Verify OTP matching
-    if (otpRecord.otp !== otp.trim()) {
-      return res.status(400).json({ error: "Incorrect verification code. Please check and try again." });
+    const firebaseUser = verifyData.users?.[0];
+    if (!firebaseUser || !firebaseUser.phoneNumber) {
+      return res.status(400).json({ error: "No verified mobile number found in authentication session." });
     }
 
-    // OTP is correct! Clear it.
-    if (isMongoConnected()) {
-      await Otp.deleteOne({ phone: formattedPhone });
-    } else {
-      inMemoryOtps.delete(formattedPhone);
-    }
+    const formattedPhone = firebaseUser.phoneNumber;
 
     // Sign up / log in user in database
     let user = null;
@@ -190,7 +175,7 @@ export const verifyOtp = async (req, res) => {
           name: name?.trim() || `User_${formattedPhone.slice(-4)}`,
           role: role || "Student",
         });
-        console.log(`[MONGODB] Registered new user: ${formattedPhone}`);
+        console.log(`[MONGODB] Registered new user via Firebase: ${formattedPhone}`);
       } else {
         // Option to update existing user role/name if passed in during sign up phase
         if (name || role) {
@@ -198,7 +183,7 @@ export const verifyOtp = async (req, res) => {
           if (role) user.role = role;
           await user.save();
         }
-        console.log(`[MONGODB] Logged in existing user: ${formattedPhone}`);
+        console.log(`[MONGODB] Logged in existing user via Firebase: ${formattedPhone}`);
       }
     } else {
       // In-memory lookup/creation
@@ -215,13 +200,13 @@ export const verifyOtp = async (req, res) => {
           updatedAt: new Date(),
         };
         inMemoryUsers.set(formattedPhone, user);
-        console.log(`[IN-MEMORY DB] Registered new user: ${formattedPhone}`);
+        console.log(`[IN-MEMORY DB] Registered new user via Firebase: ${formattedPhone}`);
       } else {
         if (name) user.name = name.trim();
         if (role) user.role = role;
         user.updatedAt = new Date();
         inMemoryUsers.set(formattedPhone, user);
-        console.log(`[IN-MEMORY DB] Logged in existing user: ${formattedPhone}`);
+        console.log(`[IN-MEMORY DB] Logged in existing user via Firebase: ${formattedPhone}`);
       }
     }
 
