@@ -40,7 +40,6 @@ export default function Auth() {
   // Expiration and Resend Timers
   const [resendTimer, setResendTimer] = useState(30);
   const [expiryTimer, setExpiryTimer] = useState(300); // 5 minutes in seconds
-  const [sandboxOtp, setSandboxOtp] = useState<string | null>(null);
 
   // Interval references
   const resendIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -146,14 +145,6 @@ export default function Auth() {
     }
 
     toast.success("Verification code dispatched successfully!");
-    if (res.dev_otp) {
-      setSandboxOtp(res.dev_otp);
-      // Automatically copy to clipboard for convenience
-      navigator.clipboard.writeText(res.dev_otp);
-      toast.info(`[SANDBOX] Copied OTP ${res.dev_otp} to clipboard!`);
-    } else {
-      setSandboxOtp(null);
-    }
 
     setStep("otp");
     startResendTimer();
@@ -184,11 +175,6 @@ export default function Auth() {
     }
 
     toast.success("A fresh verification code has been sent!");
-    if (res.dev_otp) {
-      setSandboxOtp(res.dev_otp);
-      navigator.clipboard.writeText(res.dev_otp);
-      toast.info(`[SANDBOX] Copied OTP ${res.dev_otp} to clipboard!`);
-    }
 
     startResendTimer();
     startExpiryTimer();
@@ -488,7 +474,6 @@ export default function Auth() {
                 type="button"
                 onClick={() => {
                   setStep("email");
-                  setSandboxOtp(null);
                 }}
                 className="px-2.5 py-1 text-[10px] font-semibold text-primary-deep hover:text-emerald-700 bg-card border border-border rounded-lg shadow-sm hover:shadow transition-all flex items-center gap-1 shrink-0"
               >
@@ -543,25 +528,7 @@ export default function Auth() {
               )}
             </div>
 
-            {/* SMTP Sandbox Active notification */}
-            {sandboxOtp && (
-              <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl flex items-center justify-between animate-fade-up">
-                <div className="min-w-0 flex-1 mr-2">
-                  <p className="text-[9px] text-primary-deep font-bold uppercase tracking-wider">Email Sandbox Mode</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">OTP is: <strong className="text-primary-deep font-extrabold text-xs">{sandboxOtp}</strong></p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(sandboxOtp);
-                    toast.success("OTP copied!");
-                  }}
-                  className="px-2 py-0.5 text-[9px] font-bold text-primary-deep hover:bg-primary/20 border border-primary/30 rounded-md transition-colors shrink-0"
-                >
-                  Copy
-                </button>
-              </div>
-            )}
+            {/* No sandbox for Supabase */}
 
             <button
               type="submit"
