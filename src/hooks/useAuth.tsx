@@ -1,7 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase";
-import { signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 
 export type Role = "Student" | "Provider" | "NGO";
 
@@ -28,7 +26,7 @@ interface AuthContextValue {
   user: JWTUser | null;
   profile: MockProfile | null;
   loading: boolean;
-  sendOtp: (phone: string, recaptchaVerifier: any) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
+  sendOtp: (phone: string) => Promise<{ ok: true; dev_otp?: string } | { ok: false; error: string }>;
   verifyOtp: (
     phone: string,
     otp: string,
@@ -45,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<JWTUser | null>(null);
   const [profile, setProfile] = useState<MockProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
   // Initialize and restore session from localStorage JWT
   const initializeAuth = async () => {
@@ -103,43 +100,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Triggers Firebase Phone Authentication client-side
+   * Triggers OTP sending endpoint on our Express backend (Twilio SMS)
    */
-  const sendOtp = async (phone: string, recaptchaVerifier: any) => {
+  const sendOtp = async (phone: string) => {
     try {
-      let formattedPhone = phone.trim();
-      if (/^\d{10}$/.test(formattedPhone) && !formattedPhone.startsWith("+")) {
-        formattedPhone = `+91${formattedPhone}`; // Default to Indian prefix
-      }
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
 
-      const result = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier);
-      setConfirmationResult(result);
+      const data = await res.json();
+      if (!res.ok) {
+        return { ok: false as const, error: data.error || "Failed to send OTP" };
+      }
 
       return {
         ok: true as const,
+        dev_otp: data.dev_otp, // Returned in sandbox mode when Twilio is not configured
       };
     } catch (err: any) {
-      console.error("Firebase sendOtp error:", err);
-      return { ok: false as const, error: err.message || "Failed to send verification code via Firebase." };
+      return { ok: false as const, error: err.message || "Connection to auth server failed." };
     }
   };
 
   /**
-   * Verifies the OTP code via Firebase and establishes a JWT session on our Express backend
+   * Verifies the OTP code on the backend and establishes a JWT session
    */
   const verifyOtp = async (phone: string, otp: string, name?: string, role?: Role) => {
     try {
-      if (!confirmationResult) {
-        return { ok: false as const, error: "No active verification session found. Please request a new code." };
-      }
-
-      const credential = await confirmationResult.confirm(otp);
-      const idToken = await credential.user.getIdToken();
-
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, name, role }),
+        body: JSON.stringify({ phone, otp, name, role }),
       });
 
       const data = await res.json();
@@ -172,8 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(mappedProfile);
       return { ok: true as const };
     } catch (err: any) {
-      console.error("Firebase verifyOtp error:", err);
-      return { ok: false as const, error: err.message || "Invalid code or verification expired." };
+      return { ok: false as const, error: err.message || "Connection to auth server failed." };
     }
   };
 

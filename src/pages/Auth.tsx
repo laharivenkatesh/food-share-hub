@@ -3,8 +3,6 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Leaf, Phone, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, GraduationCap, Store, Building } from "lucide-react";
 import { useAuth, Role } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase";
-import { RecaptchaVerifier } from "firebase/auth";
 
 const roles: Role[] = ["Student", "Provider", "NGO"];
 
@@ -41,7 +39,6 @@ export default function Auth() {
   // OTP inputs state (6 digits)
   const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(""));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
 
   // Expiration and Resend Timers
   const [resendTimer, setResendTimer] = useState(30);
@@ -89,14 +86,6 @@ export default function Auth() {
     return () => {
       if (resendIntervalRef.current) clearInterval(resendIntervalRef.current);
       if (expiryIntervalRef.current) clearInterval(expiryIntervalRef.current);
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch (e) {
-          console.error("Error clearing RecaptchaVerifier:", e);
-        }
-        recaptchaVerifierRef.current = null;
-      }
     };
   }, []);
 
@@ -126,35 +115,23 @@ export default function Auth() {
     }
 
     setBusy(true);
-
-    if (!recaptchaVerifierRef.current) {
-      try {
-        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, "recaptcha-container", {
-          size: "invisible",
-        });
-      } catch (err: any) {
-        toast.error("Safety verification failed to initialize: " + err.message);
-        setBusy(false);
-        return;
-      }
-    }
-
-    const res = await sendOtp(phone, recaptchaVerifierRef.current);
+    const res = await sendOtp(phone);
     setBusy(false);
 
     if (!res.ok) {
       toast.error("error" in res ? res.error : "An error occurred");
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch (e) {}
-        recaptchaVerifierRef.current = null;
-      }
       return;
     }
 
     toast.success("Verification code dispatched successfully!");
-    setSandboxOtp(null);
+    if (res.dev_otp) {
+      setSandboxOtp(res.dev_otp);
+      // Automatically copy to clipboard for convenience
+      navigator.clipboard.writeText(res.dev_otp);
+      toast.info(`[SANDBOX] Copied OTP ${res.dev_otp} to clipboard!`);
+    } else {
+      setSandboxOtp(null);
+    }
 
     setStep("otp");
     startResendTimer();
@@ -170,35 +147,20 @@ export default function Auth() {
   const handleResendOtp = async () => {
     if (resendTimer > 0) return;
     setBusy(true);
-
-    if (!recaptchaVerifierRef.current) {
-      try {
-        recaptchaVerifierRef.current = new RecaptchaVerifier(auth, "recaptcha-container", {
-          size: "invisible",
-        });
-      } catch (err: any) {
-        toast.error("Safety verification failed to initialize: " + err.message);
-        setBusy(false);
-        return;
-      }
-    }
-
-    const res = await sendOtp(phone, recaptchaVerifierRef.current);
+    const res = await sendOtp(phone);
     setBusy(false);
 
     if (!res.ok) {
       toast.error("error" in res ? res.error : "An error occurred");
-      if (recaptchaVerifierRef.current) {
-        try {
-          recaptchaVerifierRef.current.clear();
-        } catch (e) {}
-        recaptchaVerifierRef.current = null;
-      }
       return;
     }
 
     toast.success("A fresh verification code has been sent!");
-    setSandboxOtp(null);
+    if (res.dev_otp) {
+      setSandboxOtp(res.dev_otp);
+      navigator.clipboard.writeText(res.dev_otp);
+      toast.info(`[SANDBOX] Copied OTP ${res.dev_otp} to clipboard!`);
+    }
 
     startResendTimer();
     startExpiryTimer();
@@ -559,9 +521,6 @@ export default function Auth() {
           </form>
         )}
       </div>
-      
-      {/* Invisible reCAPTCHA Anchor */}
-      <div id="recaptcha-container" className="hidden"></div>
     </div>
   );
-}
+}
