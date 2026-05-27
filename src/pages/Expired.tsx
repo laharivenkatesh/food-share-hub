@@ -71,47 +71,52 @@ function ExpiredFoodCard({ food }: { food: FoodItem }) {
 
   return (
     <article className="card-soft border border-dashed border-warning/30 bg-card/95 hover:border-warning/60 transition-all duration-300 animate-fade-up">
-      <div className="relative">
-        <img 
-          src={food.image} 
-          alt={food.name} 
-          className="w-full h-44 object-cover grayscale-[20%] opacity-90" 
-          loading="lazy" 
-        />
-        <span className={`absolute top-3 right-3 badge-pill ${statusColorClass}`}>
-          {statusText}
-        </span>
-        {food.purpose === "animals" && (
-          <span className="absolute top-3 left-3 badge-pill bg-secondary text-secondary-foreground">
-            🐾 Animal Priority
+      <Link to={isCollected ? "#" : `/food/${food.id}`} className={isCollected ? "pointer-events-none" : "block overflow-hidden"}>
+        <div className="relative">
+          <img 
+            src={food.image} 
+            alt={food.name} 
+            className="w-full h-44 object-cover grayscale-[20%] opacity-90 hover:scale-105 transition-transform duration-300" 
+            loading="lazy" 
+          />
+          <span className={`absolute top-3 right-3 badge-pill ${statusColorClass}`}>
+            {statusText}
           </span>
-        )}
-      </div>
+          {food.purpose === "animals" && (
+            <span className="absolute top-3 left-3 badge-pill bg-secondary text-secondary-foreground">
+              🐾 Animal Priority
+            </span>
+          )}
+        </div>
+      </Link>
 
       <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-extrabold text-lg leading-tight text-foreground/90 truncate">{food.name}</h3>
-            <div className="text-xs font-bold text-muted-foreground flex flex-col gap-1 mt-1">
-              <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Feeds {total} people</span>
-              <span className="text-primary-deep flex items-center gap-1 font-extrabold">📊 {remaining} / {total} portions left</span>
+        <Link to={isCollected ? "#" : `/food/${food.id}`} className={isCollected ? "pointer-events-none" : "block hover:opacity-90 transition-opacity"}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-extrabold text-lg leading-tight text-foreground/90 truncate">{food.name}</h3>
+              <div className="text-xs font-bold text-muted-foreground flex flex-col gap-1 mt-1">
+                <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Feeds {total} people</span>
+                <span className="text-primary-deep flex items-center gap-1 font-extrabold">📊 {remaining} / {total} portions left</span>
+              </div>
+              {/* Portions Progress Bar */}
+              <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden border border-border/40 mt-1.5">
+                <div 
+                  className="bg-primary-deep h-full transition-all duration-500" 
+                  style={{ width: `${(remaining / total) * 100}%` }}
+                />
+              </div>
             </div>
-            {/* Portions Progress Bar */}
-            <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden border border-border/40 mt-1.5">
-              <div 
-                className="bg-primary-deep h-full transition-all duration-500" 
-                style={{ width: `${(remaining / total) * 100}%` }}
-              />
+            <div className="text-right shrink-0">
+              {food.price === 0 ? (
+                <span className="badge-pill bg-success text-success-foreground">FREE</span>
+              ) : (
+                <span className="font-extrabold text-lg text-foreground/80">₹{food.price}</span>
+              )}
             </div>
           </div>
-          <div className="text-right shrink-0">
-            {food.price === 0 ? (
-              <span className="badge-pill bg-success text-success-foreground">FREE</span>
-            ) : (
-              <span className="font-extrabold text-lg text-foreground/80">₹{food.price}</span>
-            )}
-          </div>
-        </div>
+        </Link>
+
 
 
         <div className="flex items-center gap-2 flex-wrap">
