@@ -7,6 +7,7 @@ import { useAllFoods } from "@/hooks/useMyPosts";
 import { useTransactions } from "@/hooks/useTransactions";
 import { openInGoogleMaps } from "@/components/MapPreview";
 import { useNavigate } from "react-router-dom";
+import { getFoodTimes } from "@/lib/utils";
 
 const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
 const sorts = ["Newest", "Expiry Soon", "Quantity High", "Price Low"] as const;
@@ -155,6 +156,14 @@ export default function Home() {
 
   const list = useMemo(() => {
     let arr = [...dbFoods];
+    
+    // Filter out expired items (show only active ones)
+    const now = Date.now();
+    arr = arr.filter((f) => {
+      const { primaryExpiry } = getFoodTimes(f);
+      return now < primaryExpiry;
+    });
+
     if (userLoc) {
       arr = arr.filter(
         (f) => f.lat && f.lng && calculateDistance(userLoc.lat, userLoc.lng, f.lat, f.lng) <= 50
@@ -168,6 +177,7 @@ export default function Home() {
     }
     return arr;
   }, [activeCats, sort, dbFoods, userLoc]);
+
 
   const nearbyNGOs = useMemo(() => {
     let filtered = ngosList;

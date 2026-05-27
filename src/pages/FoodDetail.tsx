@@ -10,6 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTransactions } from "@/hooks/useTransactions";
 import LiveCountdown from "@/components/LiveCountdown";
 import { supabase } from "@/lib/supabase";
+import { getFoodTimes } from "@/lib/utils";
+
 
 const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "Not Available"];
 
@@ -45,11 +47,28 @@ export default function FoodDetail() {
 
   if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
 
+  const { primaryExpiry, secondaryExpiry } = getFoodTimes(food);
+  const now = Date.now();
+  const isExpired = now >= primaryExpiry;
+  const isHardExpired = now >= secondaryExpiry;
+
+  useEffect(() => {
+    if (isHardExpired) {
+      toast.error("This listing has hard-expired and is no longer available.");
+      nav("/");
+    }
+  }, [isHardExpired, nav]);
+
+  if (isHardExpired) {
+    return <div className="p-8 text-center">Listing expired. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
+  }
+
   const tx = getTransactionForFood(food.id);
   const isDonor = user?.id === food.provider.id;
   const isCollector = tx?.collector_id === user?.id;
   const isUrgent = food.expiryHours < 1;
   const isReserved = food.status === "reserved" && !tx;
+
 
   const renderTransactionStatus = () => {
     if (tx?.status === "completed" || tx?.status === "accepted" || tx?.status === "pending") {
@@ -186,7 +205,16 @@ export default function FoodDetail() {
           )}
         </div>
 
-        {isUrgent ? (
+        {isExpired ? (
+          <div className="bg-warning/15 border border-warning text-warning-foreground p-4 rounded-2xl font-bold text-sm space-y-1">
+            <div className="flex items-center gap-2 text-warning-foreground font-extrabold text-base">
+              ⚠️ Expired but Claimable
+            </div>
+            <p className="text-xs font-semibold text-muted-foreground leading-normal mt-1">
+              This listing has passed its premium freshness window, but is still available for pet food, composting, or quick consumption. 
+            </p>
+          </div>
+        ) : isUrgent ? (
           <div className="bg-urgent/15 border border-urgent text-urgent p-3 rounded-2xl font-bold text-sm flex items-center gap-2">
             <LiveCountdown postedAt={food.postedAt} expiryHours={food.expiryHours} urgent={true} />
           </div>
@@ -195,6 +223,7 @@ export default function FoodDetail() {
             <LiveCountdown postedAt={food.postedAt} expiryHours={food.expiryHours} urgent={false} />
           </div>
         )}
+
 
         {food.purpose === "animals" && (
           <div className="bg-secondary/40 p-3 rounded-2xl text-sm font-semibold">

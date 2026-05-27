@@ -85,6 +85,8 @@ export default function PostFood() {
   const [quantity, setQuantity] = useState("");
   const [preparedAt, setPreparedAt] = useState("");
   const [expiryHours, setExpiryHours] = useState("");
+  const [graceHours, setGraceHours] = useState("3");
+
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
@@ -203,7 +205,7 @@ export default function PostFood() {
       lat: Number(lat),
       lng: Number(lng),
       category,
-      tags: [],
+      tags: [`grace-hours:${graceHours}`],
       purpose,
       safe_for_animals: safe,
       status: "available",
@@ -212,6 +214,7 @@ export default function PostFood() {
       notes: notes.trim() || null,
       allow_split: allowSplit,
     });
+
     setBusy(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Food posted! Helping the world 🌱");
@@ -317,6 +320,27 @@ export default function PostFood() {
             onChange={(e) => setExpiryHours(e.target.value)}
             required
           />
+
+          <div className="space-y-1 bg-card p-3 rounded-2xl border border-border/60">
+            <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">
+              Expired Outlet Visibility (Grace Period)
+            </label>
+            <select
+              value={graceHours}
+              onChange={(e) => setGraceHours(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-input border border-border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {[1, 2, 3, 4, 5, 6, 8, 10, 12, 24].map((h) => (
+                <option key={h} value={h}>
+                  Show on Expired Page for {h} {h === 1 ? "hour" : "hours"} extra
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted-foreground/80 leading-normal mt-1">
+              Specify how many hours this food remains claimable on the Expired Feed before it is completely hidden.
+            </p>
+          </div>
+
         </div>
 
         {/* ── Location ── */}

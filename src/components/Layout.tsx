@@ -1,5 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Home, PlusCircle, User, Leaf, Bell, BellOff, Trash2, CheckCheck, Volume2, VolumeX, Inbox } from "lucide-react";
+import { Home, PlusCircle, User, Leaf, Bell, BellOff, Trash2, CheckCheck, Volume2, VolumeX, Inbox, Clock } from "lucide-react";
+
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useEffect, useState } from "react";
@@ -249,10 +250,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {!hideNav && (
         <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-card border-t border-border px-4 py-2 flex items-center justify-around z-50 shadow-card">
           <NavItem to="/" icon={<Home className="w-5 h-5" />} label="Home" />
+          <NavItem to="/expired" icon={<Clock className="w-5 h-5" />} label="Expired" />
           <NavItem to="/post" icon={<PlusCircle className="w-7 h-7" />} label="Post" highlight />
           <NavItem to="/activity" icon={<User className="w-5 h-5" />} label="Profile" />
         </nav>
       )}
+
     </div>
   );
 }

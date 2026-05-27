@@ -15,6 +15,7 @@ import Activity from "./pages/Activity";
 import NGOs from "./pages/NGOs";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
+import Expired from "./pages/Expired";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
                 <Routes>
                   <Route path="/auth" element={<Auth />} />
                   <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+                  <Route path="/expired" element={<RequireAuth><Expired /></RequireAuth>} />
                   <Route path="/food/:id" element={<RequireAuth><FoodDetail /></RequireAuth>} />
                   <Route path="/post" element={<RequireAuth><PostFood /></RequireAuth>} />
                   <Route path="/activity" element={<RequireAuth><Activity /></RequireAuth>} />
@@ -45,5 +47,6 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
+
 
 export default App;
