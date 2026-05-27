@@ -10,6 +10,7 @@ export interface Transaction {
   donor_id: string;
   collector_id: string;
   status: TransactionStatus;
+  portions: number;
   donor_accepted: boolean;
   collector_accepted: boolean;
   created_at: string;
@@ -28,7 +29,7 @@ interface TransactionContextValue {
   transactions: Transaction[];
   userStats: UserStats;
   loading: boolean;
-  requestFood: (foodId: string, donorId: string) => Promise<void>;
+  requestFood: (foodId: string, donorId: string, portions: number) => Promise<void>;
   markCollected: (foodId: string) => Promise<void>;
   markDonated: (foodId: string) => Promise<void>;
   getTransactionForFood: (foodId: string) => Transaction | undefined;
@@ -130,11 +131,8 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     computeStats();
   }, [transactions, computeStats]);
 
-  const requestFood = async (foodId: string, donorId: string) => {
+  const requestFood = async (foodId: string, donorId: string, portions: number = 1) => {
     if (!user) return;
-
-    const existing = transactions.find(t => t.food_id === foodId && t.status !== "cancelled");
-    if (existing) return;
 
     const { error } = await supabase.from("transactions").insert({
       food_id: foodId,
@@ -143,6 +141,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       status: "pending",
       donor_accepted: false,
       collector_accepted: false,
+      portions: portions
     });
 
     if (error) {
@@ -151,6 +150,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       await fetchTransactions();
     }
   };
+
 
   const markCollected = async (foodId: string) => {
     const { data: tx } = await supabase

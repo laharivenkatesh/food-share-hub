@@ -33,6 +33,7 @@ function mapRow(row: any): FoodItem {
     notes: row.notes,
     allowSplit: row.allow_split,
     postedAt: row.created_at,
+    bookedPortions: row.booked_portions || 0,
     trustScore: 4.5,
     confidence: "High",
     reviews: [],

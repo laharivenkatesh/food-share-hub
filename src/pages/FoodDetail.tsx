@@ -18,7 +18,7 @@ const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "No
 export default function FoodDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
 
   const { foods } = useAllFoods();
@@ -67,8 +67,119 @@ export default function FoodDetail() {
   const isDonor = user?.id === food.provider.id;
   const isCollector = tx?.collector_id === user?.id;
   const isUrgent = food.expiryHours < 1;
+  const isCollected = food.status === "collected";
+
+  
+  const total = food.feeds;
+  const booked = food.bookedPortions || 0;
+  const remaining = Math.max(0, total - booked);
+  const isFullyBooked = remaining <= 0;
+
+  const [selectedPortions, setSelectedPortions] = useState(1);
+  const [bookingBusy, setBookingBusy] = useState(false);
+
   const isReserved = food.status === "reserved" && !tx;
 
+
+
+  const renderPortionBooking = () => {
+    if (isDonor) {
+      return (
+        <div className="bg-muted/50 p-4 rounded-2xl text-center text-xs font-bold text-muted-foreground">
+          👑 You are the provider of this listing. Waiting for bookings...
+        </div>
+      );
+    }
+
+    if (isCollected) {
+      return (
+        <div className="bg-muted/30 p-4 rounded-2xl text-center text-xs font-bold text-muted-foreground">
+          🔒 Collected & Closed
+        </div>
+      );
+    }
+
+    if (isFullyBooked || food.status === "reserved") {
+      return (
+        <button disabled className="btn-secondary opacity-50 w-full cursor-not-allowed bg-muted/60 text-xs font-extrabold">
+          🔒 Fully Booked / Reserved
+        </button>
+      );
+    }
+
+    if (tx) {
+      return null;
+    }
+
+    return (
+      <div className="bg-card p-4 rounded-2xl border border-border/80 shadow-soft space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+            Select Portions to Book
+          </label>
+          <span className="text-[11px] font-extrabold text-primary-deep bg-primary/10 px-2.5 py-1 rounded-full">
+            {remaining} left
+          </span>
+        </div>
+
+        <div className="flex gap-2.5">
+          <select
+            value={selectedPortions}
+            onChange={(e) => setSelectedPortions(Number(e.target.value))}
+            className="flex-1 px-3 py-2.5 rounded-xl bg-input border border-border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {Array.from({ length: remaining }, (_, i) => i + 1).map((val) => (
+              <option key={val} value={val}>
+                {val} {val === 1 ? "portion" : "portions"}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={async () => {
+              if (!user) {
+                toast.error("Please login to book food");
+                nav("/auth");
+                return;
+              }
+              setBookingBusy(true);
+              const toastId = toast.loading("Booking portions...");
+              
+              try {
+                await requestFood(food.id, food.provider.id, selectedPortions);
+                
+                // Add notifications to both donor and collector
+                await supabase.from("notifications").insert([
+                  {
+                    user_id: food.provider.id,
+                    food_id: food.id,
+                    title: "🍽️ New Portion Booking!",
+                    message: `${profile?.name || 'A user'} booked ${selectedPortions} portions of your ${food.name}.`
+                  },
+                  {
+                    user_id: user.id,
+                    food_id: food.id,
+                    title: "✅ Booking Confirmed!",
+                    message: `You successfully booked ${selectedPortions} portions of ${food.name}.`
+                  }
+                ]);
+
+                toast.success(`Booked ${selectedPortions} portions successfully!`, { id: toastId });
+              } catch (e: any) {
+                toast.error(e.message || "Failed to book portions", { id: toastId });
+              } finally {
+                setBookingBusy(false);
+              }
+            }}
+            disabled={bookingBusy || remaining <= 0}
+            className="px-6 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-extrabold text-xs shadow-soft hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
+          >
+            🍽️ Book Now
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const renderTransactionStatus = () => {
     if (tx?.status === "completed" || tx?.status === "accepted" || tx?.status === "pending") {
@@ -150,32 +261,25 @@ export default function FoodDetail() {
       return <button disabled className="btn-secondary opacity-50">Reserved by another user</button>;
     }
 
-    // Available
-    if (isDonor) {
-      return <button disabled className="btn-secondary opacity-70">Waiting for requests...</button>;
-    }
-
-    if (isReserved) {
-      return <button disabled className="btn-secondary opacity-50">Already Reserved</button>;
-    }
-
-    return (
-      <button
-        onClick={async () => {
-          if (!user) {
-            toast.error("Please login to request food");
-            nav("/auth");
-            return;
-          }
-          await requestFood(food.id, food.provider.id);
-          toast.success("Pickup requested! Provider notified.");
-        }}
-        className="btn-primary"
-      >
-        Request Pickup
-      </button>
-    );
+    // Fallback if tx was cancelled or not found
+    return null;
   };
+
+
+  // Custom status configuration
+  let statusText = food.status as string;
+  let statusColorClass = "bg-success text-success-foreground";
+
+  if (isCollected) {
+    statusText = "collected";
+    statusColorClass = "bg-muted-foreground/30 text-foreground";
+  } else if (isReserved || isFullyBooked) {
+    statusText = isFullyBooked ? "booked" : "reserved";
+    statusColorClass = isFullyBooked ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground";
+  } else {
+    statusText = "available";
+    statusColorClass = "bg-success text-success-foreground";
+  }
 
   return (
     <div className="pb-6">
@@ -193,17 +297,42 @@ export default function FoodDetail() {
 
       <div className="px-4 py-5 space-y-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-extrabold">{food.name}</h1>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <span className={`badge-pill ${statusColorClass}`}>
+                {statusText}
+              </span>
+              <span className="badge-pill bg-primary/10 text-primary-deep font-extrabold">
+                📊 {remaining} / {total} portions available
+              </span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-foreground truncate">{food.name}</h1>
             <p className="text-sm text-muted-foreground mt-1">Quantity: {food.quantity}</p>
             <p className="text-sm text-muted-foreground">Prepared: {food.preparedAt}</p>
           </div>
-          {food.price === 0 ? (
-            <span className="badge-pill bg-success text-success-foreground !text-sm">FREE</span>
-          ) : (
-            <span className="font-extrabold text-2xl">₹{food.price}</span>
-          )}
+          <div className="shrink-0 text-right">
+            {food.price === 0 ? (
+              <span className="badge-pill bg-success text-success-foreground !text-sm">FREE</span>
+            ) : (
+              <span className="font-extrabold text-2xl text-foreground">₹{food.price}</span>
+            )}
+          </div>
         </div>
+
+        {/* Portions Progress Bar */}
+        <div className="space-y-1 bg-card p-3.5 rounded-2xl border border-border/50 shadow-soft">
+          <div className="flex justify-between text-xs font-bold text-muted-foreground">
+            <span>Portions Booked</span>
+            <span>{booked} / {total} Claimed</span>
+          </div>
+          <div className="w-full bg-muted h-2.5 rounded-full overflow-hidden border border-border/40 mt-1">
+            <div 
+              className="bg-primary-deep h-full transition-all duration-500" 
+              style={{ width: `${(booked / total) * 100}%` }}
+            />
+          </div>
+        </div>
+
 
         {isExpired ? (
           <div className="bg-warning/15 border border-warning text-warning-foreground p-4 rounded-2xl font-bold text-sm space-y-1">
@@ -287,8 +416,12 @@ export default function FoodDetail() {
           </div>
         )}
 
+        {/* Portion Booking Form */}
+        {renderPortionBooking()}
+
         {/* Transaction Flow Buttons */}
-        {renderTransactionStatus()}
+        {tx && renderTransactionStatus()}
+
 
         <ReviewSection initial={food.reviews} />
       </div>

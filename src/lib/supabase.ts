@@ -62,5 +62,6 @@ export interface FoodRow {
   quantity: string;
   notes: string | null;
   allow_split: boolean;
+  booked_portions: number;
   created_at: string;
 }
