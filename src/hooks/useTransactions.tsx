@@ -116,11 +116,22 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   useEffect(() => {
-    fetchTransactions();
+    let timerId: NodeJS.Timeout;
+    let active = true;
 
-    const interval = setInterval(() => {
-      fetchTransactions();
-    }, 1000);
+    const poll = async () => {
+      if (!active) return;
+      await fetchTransactions();
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    };
+
+    fetchTransactions().then(() => {
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    });
 
     const channelId = `transactions-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
@@ -135,7 +146,8 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
-      clearInterval(interval);
+      active = false;
+      clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
   }, [fetchTransactions]);

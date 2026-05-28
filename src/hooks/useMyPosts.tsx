@@ -84,14 +84,26 @@ export function useMyPosts() {
   }, [user]);
 
   useEffect(() => {
-    refresh();
+    let timerId: NodeJS.Timeout;
+    let active = true;
 
-    const interval = setInterval(() => {
-      refresh(true);
-    }, 1000);
+    const poll = async () => {
+      if (!active) return;
+      await refresh(true);
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    };
+
+    refresh().then(() => {
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    });
 
     return () => {
-      clearInterval(interval);
+      active = false;
+      clearTimeout(timerId);
     };
   }, [refresh]);
 
@@ -179,12 +191,22 @@ export function useAllFoods() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    let timerId: NodeJS.Timeout;
+    let active = true;
 
-    // Setup auto-polling every 1 second for background updates
-    const interval = setInterval(() => {
-      refresh(true);
-    }, 1000);
+    const poll = async () => {
+      if (!active) return;
+      await refresh(true);
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    };
+
+    refresh().then(() => {
+      if (active) {
+        timerId = setTimeout(poll, 1000);
+      }
+    });
 
     const channelId = `foods-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
@@ -199,7 +221,8 @@ export function useAllFoods() {
       .subscribe();
 
     return () => {
-      clearInterval(interval);
+      active = false;
+      clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
   }, [refresh]);
