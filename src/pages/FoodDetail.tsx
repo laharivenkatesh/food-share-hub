@@ -23,14 +23,23 @@ export default function FoodDetail() {
 
   const { foods } = useAllFoods();
   const food = foods.find((f) => f.id === id);
-  const [rt, setRt] = useState<RealtimeStatus>(food?.realtimeStatus || "Still Available");
+  const [rt, setRt] = useState<RealtimeStatus>("Still Available");
   const [oppositeProfile, setOppositeProfile] = useState<any>(null);
+  const [selectedPortions, setSelectedPortions] = useState(1);
+  const [bookingBusy, setBookingBusy] = useState(false);
+
+  // Sync realtimeStatus state when food is loaded
+  useEffect(() => {
+    if (food) {
+      setRt(food.realtimeStatus);
+    }
+  }, [food]);
 
   useEffect(() => {
     const fetchOppositeProfile = async () => {
       const tx = getTransactionForFood(id || "");
-      if (tx && user) {
-        const isDonorCheck = user?.id === food?.provider.id;
+      if (tx && user && food) {
+        const isDonorCheck = user?.id === food.provider.id;
         const profileId = isDonorCheck ? tx.collector_id : tx.donor_id;
         if (profileId) {
           const { data } = await supabase
@@ -45,12 +54,10 @@ export default function FoodDetail() {
     fetchOppositeProfile();
   }, [id, user, food, getTransactionForFood]);
 
-  if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
-
-  const { primaryExpiry, secondaryExpiry } = getFoodTimes(food);
+  const { primaryExpiry, secondaryExpiry } = food ? getFoodTimes(food) : { primaryExpiry: 0, secondaryExpiry: 0 };
   const now = Date.now();
-  const isExpired = now >= primaryExpiry;
-  const isHardExpired = now >= secondaryExpiry;
+  const isExpired = food ? now >= primaryExpiry : false;
+  const isHardExpired = food ? now >= secondaryExpiry : false;
 
   useEffect(() => {
     if (isHardExpired) {
@@ -58,6 +65,8 @@ export default function FoodDetail() {
       nav("/");
     }
   }, [isHardExpired, nav]);
+
+  if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
 
   if (isHardExpired) {
     return <div className="p-8 text-center">Listing expired. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
@@ -74,9 +83,6 @@ export default function FoodDetail() {
   const booked = food.bookedPortions || 0;
   const remaining = Math.max(0, total - booked);
   const isFullyBooked = remaining <= 0;
-
-  const [selectedPortions, setSelectedPortions] = useState(1);
-  const [bookingBusy, setBookingBusy] = useState(false);
 
   const isReserved = food.status === "reserved" && !tx;
 
