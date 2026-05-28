@@ -30,8 +30,8 @@ interface TransactionContextValue {
   userStats: UserStats;
   loading: boolean;
   requestFood: (foodId: string, donorId: string, portions: number) => Promise<void>;
-  markCollected: (foodId: string) => Promise<void>;
-  markDonated: (foodId: string) => Promise<void>;
+  markCollected: (transactionId: string) => Promise<void>;
+  markDonated: (transactionId: string) => Promise<void>;
   getTransactionForFood: (foodId: string) => Transaction | undefined;
   refreshTransactions: () => Promise<void>;
 }
@@ -111,6 +111,10 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchTransactions();
 
+    const interval = setInterval(() => {
+      fetchTransactions();
+    }, 3000);
+
     const channel = supabase
       .channel("transactions-realtime")
       .on(
@@ -123,6 +127,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [fetchTransactions]);
@@ -134,6 +139,17 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   const requestFood = async (foodId: string, donorId: string, portions: number = 1) => {
     if (!user) return;
 
+    // 1. Fetch current food feeds and booked portions
+    const { data: food } = await supabase
+      .from("foods")
+      .select("feeds, booked_portions")
+      .eq("id", foodId)
+      .single();
+
+    const currentBooked = (food?.booked_portions || 0) + portions;
+    const isFullyBookedNow = food ? currentBooked >= food.feeds : false;
+
+    // 2. Insert transaction
     const { error } = await supabase.from("transactions").insert({
       food_id: foodId,
       donor_id: donorId,
@@ -147,16 +163,63 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     if (error) {
       console.error("Error requesting food:", error);
     } else {
+      // 3. If fully booked, update status/realtime_status on foods table
+      if (isFullyBookedNow) {
+        await supabase
+          .from("foods")
+          .update({ 
+            realtime_status: "Not Available", 
+            status: "reserved",
+            booked_portions: currentBooked 
+          })
+          .eq("id", foodId);
+      } else {
+        await supabase
+          .from("foods")
+          .update({
+            booked_portions: currentBooked
+          })
+          .eq("id", foodId);
+      }
       await fetchTransactions();
     }
   };
 
+  const syncFoodStatusOnCompletion = async (foodId: string) => {
+    // Get food feeds capacity
+    const { data: food } = await supabase
+      .from("foods")
+      .select("feeds")
+      .eq("id", foodId)
+      .single();
 
-  const markCollected = async (foodId: string) => {
+    if (!food) return;
+
+    // Sum all completed transaction portions
+    const { data: txs } = await supabase
+      .from("transactions")
+      .select("portions")
+      .eq("food_id", foodId)
+      .eq("status", "completed");
+
+    const completedPortions = (txs || []).reduce((sum, t) => sum + (t.portions || 0), 0);
+
+    if (completedPortions >= food.feeds) {
+      await supabase
+        .from("foods")
+        .update({
+          status: "collected",
+          realtime_status: "Not Available"
+        })
+        .eq("id", foodId);
+    }
+  };
+
+  const markCollected = async (transactionId: string) => {
     const { data: tx } = await supabase
       .from("transactions")
       .select("*")
-      .eq("food_id", foodId)
+      .eq("id", transactionId)
       .single();
 
     if (!tx) return;
@@ -171,18 +234,21 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         status: newStatus,
         updated_at: new Date().toISOString()
       })
-      .eq("food_id", foodId);
+      .eq("id", transactionId);
 
     if (!error) {
+      if (newStatus === "completed") {
+        await syncFoodStatusOnCompletion(tx.food_id);
+      }
       await fetchTransactions();
     }
   };
 
-  const markDonated = async (foodId: string) => {
+  const markDonated = async (transactionId: string) => {
     const { data: tx } = await supabase
       .from("transactions")
       .select("*")
-      .eq("food_id", foodId)
+      .eq("id", transactionId)
       .single();
 
     if (!tx) return;
@@ -197,9 +263,12 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
         status: newStatus,
         updated_at: new Date().toISOString()
       })
-      .eq("food_id", foodId);
+      .eq("id", transactionId);
 
     if (!error) {
+      if (newStatus === "completed") {
+        await syncFoodStatusOnCompletion(tx.food_id);
+      }
       await fetchTransactions();
     }
   };

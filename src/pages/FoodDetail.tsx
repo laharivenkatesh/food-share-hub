@@ -19,12 +19,12 @@ export default function FoodDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user, profile } = useAuth();
-  const { getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
+  const { transactions, getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
 
   const { foods } = useAllFoods();
   const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>("Still Available");
-  const [oppositeProfile, setOppositeProfile] = useState<any>(null);
+  const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
   const [selectedPortions, setSelectedPortions] = useState(1);
   const [bookingBusy, setBookingBusy] = useState(false);
 
@@ -35,24 +35,39 @@ export default function FoodDetail() {
     }
   }, [food]);
 
+  const isDonor = food && user?.id === food.provider.id;
+  const foodTxs = food ? transactions.filter(t => t.food_id === food.id && t.status !== "cancelled") : [];
+  const myTx = user ? foodTxs.find(t => t.collector_id === user.id) : undefined;
+  const isCollector = !!myTx;
+
   useEffect(() => {
-    const fetchOppositeProfile = async () => {
-      const tx = getTransactionForFood(id || "");
-      if (tx && user && food) {
+    const fetchOppositeProfiles = async () => {
+      if (foodTxs.length > 0 && user && food) {
         const isDonorCheck = user?.id === food.provider.id;
-        const profileId = isDonorCheck ? tx.collector_id : tx.donor_id;
-        if (profileId) {
+        
+        // Find all profile IDs we need to fetch
+        const profileIds = isDonorCheck 
+          ? foodTxs.map(t => t.collector_id) 
+          : [food.provider.id];
+
+        if (profileIds.length > 0) {
           const { data } = await supabase
             .from("profiles")
             .select("*")
-            .eq("id", profileId)
-            .single();
-          setOppositeProfile(data);
+            .in("id", profileIds);
+
+          if (data) {
+            const profileMap: Record<string, any> = {};
+            data.forEach(p => {
+              profileMap[p.id] = p;
+            });
+            setOppositeProfiles(profileMap);
+          }
         }
       }
     };
-    fetchOppositeProfile();
-  }, [id, user, food, getTransactionForFood]);
+    fetchOppositeProfiles();
+  }, [id, user, food, transactions]);
 
   const { primaryExpiry, secondaryExpiry } = food ? getFoodTimes(food) : { primaryExpiry: 0, secondaryExpiry: 0 };
   const now = Date.now();
@@ -72,21 +87,14 @@ export default function FoodDetail() {
     return <div className="p-8 text-center">Listing expired. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
   }
 
-  const tx = getTransactionForFood(food.id);
-  const isDonor = user?.id === food.provider.id;
-  const isCollector = tx?.collector_id === user?.id;
+  const isReserved = food.status === "reserved" && foodTxs.length === 0;
   const isUrgent = food.expiryHours < 1;
   const isCollected = food.status === "collected";
 
-  
   const total = food.feeds;
   const booked = food.bookedPortions || 0;
   const remaining = Math.max(0, total - booked);
   const isFullyBooked = remaining <= 0;
-
-  const isReserved = food.status === "reserved" && !tx;
-
-
 
   const renderPortionBooking = () => {
     if (isDonor) {
@@ -113,7 +121,7 @@ export default function FoodDetail() {
       );
     }
 
-    if (tx) {
+    if (isCollector) {
       return null;
     }
 
@@ -188,86 +196,109 @@ export default function FoodDetail() {
   };
 
   const renderTransactionStatus = () => {
-    if (tx?.status === "completed" || tx?.status === "accepted" || tx?.status === "pending") {
-      const ContactCard = () => (
-        oppositeProfile ? (
-          <div className="bg-card p-4 rounded-xl border border-border shadow-sm mb-3 flex items-center gap-4">
-            <img
-              src={food.image}
-              alt={food.name}
-              className="w-16 h-16 rounded-xl object-cover shadow-sm shrink-0"
-              onError={(e) => { e.currentTarget.src = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80"; }}
-            />
-            <div>
-              <p className="text-xs font-bold uppercase text-muted-foreground mb-1">
-                {isDonor ? "Collector Details" : "Donor Details"}
-              </p>
-              <p className="font-extrabold text-foreground text-lg">{oppositeProfile?.name || "Loading..."}</p>
-              <p className="text-sm font-bold text-primary-deep">{oppositeProfile?.phone || "No phone provided"}</p>
-            </div>
-          </div>
-        ) : null
+    if (foodTxs.length === 0) return null;
+
+    if (isDonor) {
+      return (
+        <div className="space-y-4">
+          <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">Bookings & Claims</h3>
+          {foodTxs.map((t) => {
+            const collectorProfile = oppositeProfiles[t.collector_id];
+            return (
+              <div key={t.id} className="bg-card p-4 rounded-xl border border-border shadow-sm space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-xl shrink-0">
+                    🧑
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Collector Details</p>
+                    <p className="font-extrabold text-foreground text-base truncate">{collectorProfile?.name || "Loading..."}</p>
+                    <p className="text-xs font-bold text-primary-deep">{collectorProfile?.phone || "No phone provided"}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="badge-pill bg-primary/10 text-primary-deep font-extrabold">
+                      {t.portions} {t.portions === 1 ? "portion" : "portions"}
+                    </span>
+                  </div>
+                </div>
+
+                {t.status === "completed" ? (
+                  <div className="bg-success/15 border border-success text-success py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4" /> Portions Donated & Collected
+                  </div>
+                ) : t.donor_accepted ? (
+                  <button disabled className="btn-secondary opacity-70 w-full py-2.5 text-xs">
+                    Waiting for collector to confirm...
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await markDonated(t.id);
+                      toast.success("Marked portions as donated!");
+                    }}
+                    className="btn-primary w-full py-2.5 text-xs font-extrabold"
+                  >
+                    I Have Donated This
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       );
-
-      if (tx.status === "completed") {
-        return (
-          <div className="space-y-3">
-            <ContactCard />
-            <div className="bg-success/15 border border-success text-success p-4 rounded-2xl flex items-center justify-center gap-2 font-bold">
-              <CheckCircle2 className="w-5 h-5" /> Transaction Completed
-            </div>
-          </div>
-        );
-      }
-
-      // Pending/Accepted status
-      if (isCollector) {
-        if (tx.collector_accepted) {
-          return (
-            <div className="space-y-3">
-              <ContactCard />
-              <button disabled className="btn-secondary opacity-70">Waiting for donor to confirm...</button>
-            </div>
-          );
-        }
-        return (
-          <div className="space-y-3">
-            <ContactCard />
-            <div className="p-3 bg-warning/15 text-warning font-bold rounded-xl text-center text-sm">
-              You requested this food. Confirm when you collect it.
-            </div>
-            <button onClick={async () => { await markCollected(food.id); toast.success("Marked as collected!"); }} className="btn-primary">
-              I Have Collected This
-            </button>
-          </div>
-        );
-      }
-
-      if (isDonor) {
-        if (tx.donor_accepted) {
-          return (
-            <div className="space-y-3">
-              <ContactCard />
-              <button disabled className="btn-secondary opacity-70">Waiting for collector to confirm...</button>
-            </div>
-          );
-        }
-        return (
-          <div className="space-y-3">
-            <ContactCard />
-            <div className="p-3 bg-primary/15 text-primary-deep font-bold rounded-xl text-center text-sm">
-              Someone has requested this. Confirm when you donate it.
-            </div>
-            <button onClick={async () => { await markDonated(food.id); toast.success("Marked as donated!"); }} className="btn-primary">
-              I Have Donated This
-            </button>
-          </div>
-        );
-      }
-      return <button disabled className="btn-secondary opacity-50">Reserved by another user</button>;
     }
 
-    // Fallback if tx was cancelled or not found
+    if (isCollector && myTx) {
+      const donorProfile = oppositeProfiles[food.provider.id];
+      return (
+        <div className="space-y-3">
+          <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">Your Booking Status</h3>
+          <div className="bg-card p-4 rounded-xl border border-border shadow-sm space-y-3">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-xl shrink-0">
+                {food.provider.avatar || "🧑"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold uppercase text-muted-foreground">Donor Details</p>
+                <p className="font-extrabold text-foreground text-base truncate">{donorProfile?.name || food.provider.name}</p>
+                <p className="text-xs font-bold text-primary-deep">{donorProfile?.phone || "No phone provided"}</p>
+              </div>
+              <div className="text-right">
+                <span className="badge-pill bg-primary/10 text-primary-deep font-extrabold">
+                  {myTx.portions} {myTx.portions === 1 ? "portion" : "portions"}
+                </span>
+              </div>
+            </div>
+
+            {myTx.status === "completed" ? (
+              <div className="bg-success/15 border border-success text-success py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4" /> Portions Collected Successfully!
+              </div>
+            ) : myTx.collector_accepted ? (
+              <button disabled className="btn-secondary opacity-70 w-full py-2.5 text-xs">
+                Waiting for donor to confirm...
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="p-3 bg-warning/15 text-warning font-bold rounded-xl text-center text-xs">
+                  You requested {myTx.portions} portions. Confirm when you collect them.
+                </div>
+                <button
+                  onClick={async () => {
+                    await markCollected(myTx.id);
+                    toast.success("Marked as collected!");
+                  }}
+                  className="btn-primary w-full py-2.5 text-xs font-extrabold"
+                >
+                  I Have Collected This
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -426,7 +457,7 @@ export default function FoodDetail() {
         {renderPortionBooking()}
 
         {/* Transaction Flow Buttons */}
-        {tx && renderTransactionStatus()}
+        {renderTransactionStatus()}
 
 
         <ReviewSection initial={food.reviews} />

@@ -199,7 +199,7 @@ export default function Home() {
           <p className="text-sm text-muted-foreground">Rescue meals near you, today.</p>
         </div>
         <button
-          onClick={refresh}
+          onClick={() => refresh()}
           disabled={loading}
           className="w-9 h-9 rounded-full bg-card border border-border flex items-center justify-center shadow-sm hover:bg-muted transition-all"
           title="Refresh"

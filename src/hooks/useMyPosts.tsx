@@ -143,8 +143,8 @@ export function useAllFoods() {
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     const { data, error } = await supabase
       .from("foods")
       .select("*, profiles!foods_user_id_profiles_fkey(*)")
@@ -163,18 +163,24 @@ export function useAllFoods() {
   useEffect(() => {
     refresh();
 
+    // Setup auto-polling every 3 seconds for background updates
+    const interval = setInterval(() => {
+      refresh(true);
+    }, 3000);
+
     const channel = supabase
       .channel("foods-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "foods" },
         () => {
-          refresh();
+          refresh(true);
         }
       )
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [refresh]);

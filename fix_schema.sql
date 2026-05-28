@@ -118,27 +118,38 @@ returns trigger as $$
 declare
   target_food_id uuid;
   total_booked integer;
+  total_completed integer;
   food_feeds integer;
 begin
   target_food_id := coalesce(new.food_id, old.food_id);
   
-  -- Calculate sum of portions
+  -- Calculate sum of portions of all active transactions
   select coalesce(sum(portions), 0) into total_booked
   from public.transactions
   where food_id = target_food_id and status <> 'cancelled';
+
+  -- Calculate sum of portions of completed transactions
+  select coalesce(sum(portions), 0) into total_completed
+  from public.transactions
+  where food_id = target_food_id and status = 'completed';
 
   -- Get total feeds capacity
   select feeds into food_feeds
   from public.foods
   where id = target_food_id;
 
-  -- Update food row status and booked_portions
+  -- Update food row status, realtime_status, and booked_portions
   update public.foods
   set 
     booked_portions = total_booked,
     status = case 
+      when total_completed >= food_feeds then 'collected'::public.food_status
       when total_booked >= food_feeds then 'reserved'::public.food_status
       else 'available'::public.food_status
+    end,
+    realtime_status = case
+      when total_booked >= food_feeds then 'Not Available'
+      else realtime_status
     end
   where id = target_food_id;
 
