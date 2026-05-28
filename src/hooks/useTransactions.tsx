@@ -117,8 +117,9 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       fetchTransactions();
     }, 1000);
 
+    const channelId = `transactions-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("transactions-realtime")
+      .channel(channelId)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "transactions" },

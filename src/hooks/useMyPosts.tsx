@@ -178,8 +178,9 @@ export function useAllFoods() {
       refresh(true);
     }, 1000);
 
+    const channelId = `foods-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel("foods-realtime")
+      .channel(channelId)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "foods" },

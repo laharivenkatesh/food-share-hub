@@ -115,8 +115,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     refresh();
 
     // Subscribe to realtime changes on notifications table for current user
+    const channelId = `notifications-user-${user.id}-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
-      .channel(`notifications-user-${user.id}`)
+      .channel(channelId)
       .on(
         "postgres_changes",
         {
