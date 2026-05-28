@@ -52,7 +52,7 @@ function mapRow(row: any): FoodItem {
 }
 
 export function useMyPosts() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [posts, setPosts] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -84,6 +84,8 @@ export function useMyPosts() {
   }, [user]);
 
   useEffect(() => {
+    if (authLoading) return;
+
     let timerId: NodeJS.Timeout;
     let active = true;
 
@@ -105,7 +107,7 @@ export function useMyPosts() {
       active = false;
       clearTimeout(timerId);
     };
-  }, [refresh]);
+  }, [refresh, authLoading]);
 
   const addPost = useCallback(
     async (input: any) => {
@@ -166,6 +168,7 @@ export function useMyPosts() {
 }
 
 export function useAllFoods() {
+  const { loading: authLoading } = useAuth();
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -191,6 +194,8 @@ export function useAllFoods() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
+
     let timerId: NodeJS.Timeout;
     let active = true;
 
@@ -225,7 +230,7 @@ export function useAllFoods() {
       clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
-  }, [refresh]);
+  }, [refresh, authLoading]);
 
   return { foods, loading, refresh };
 }

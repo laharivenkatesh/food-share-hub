@@ -41,7 +41,7 @@ interface TransactionContextValue {
 const TransactionContext = createContext<TransactionContextValue | null>(null);
 
 export function TransactionProvider({ children }: { children: ReactNode }) {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [userStats, setUserStats] = useState<UserStats>({
     mealsCollected: 0,
@@ -116,6 +116,8 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   useEffect(() => {
+    if (authLoading) return;
+
     let timerId: NodeJS.Timeout;
     let active = true;
 
@@ -150,7 +152,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
-  }, [fetchTransactions]);
+  }, [fetchTransactions, authLoading]);
 
   useEffect(() => {
     computeStats();

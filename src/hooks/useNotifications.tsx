@@ -59,7 +59,7 @@ export const playNotificationSound = () => {
 };
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [notifications, setNotifications] = useState<DbNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [soundEnabled, setSoundEnabledState] = useState<boolean>(() => {
@@ -106,6 +106,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Handle initialization and real-time subscription
   useEffect(() => {
+    if (authLoading) return;
+
     if (!user || !isSupabaseConfigured) {
       setNotifications([]);
       setLoading(false);
@@ -158,7 +160,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, refresh, soundEnabled]);
+  }, [user, refresh, soundEnabled, authLoading]);
 
   const markAsRead = useCallback(async (id: string) => {
     // Optimistic local state update
