@@ -13,6 +13,8 @@ export interface Transaction {
   portions: number;
   donor_accepted: boolean;
   collector_accepted: boolean;
+  collector_lat?: number | null;
+  collector_lng?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,7 +31,7 @@ interface TransactionContextValue {
   transactions: Transaction[];
   userStats: UserStats;
   loading: boolean;
-  requestFood: (foodId: string, donorId: string, portions: number) => Promise<void>;
+  requestFood: (foodId: string, donorId: string, portions: number, collectorLat?: number, collectorLng?: number) => Promise<void>;
   markCollected: (transactionId: string) => Promise<void>;
   markDonated: (transactionId: string) => Promise<void>;
   getTransactionForFood: (foodId: string) => Transaction | undefined;
@@ -136,7 +138,13 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     computeStats();
   }, [transactions, computeStats]);
 
-  const requestFood = async (foodId: string, donorId: string, portions: number = 1) => {
+  const requestFood = async (
+    foodId: string,
+    donorId: string,
+    portions: number = 1,
+    collectorLat?: number,
+    collectorLng?: number
+  ) => {
     if (!user) return;
 
     // 1. Fetch current food feeds and booked portions
@@ -157,7 +165,9 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       status: "pending",
       donor_accepted: false,
       collector_accepted: false,
-      portions: portions
+      portions: portions,
+      collector_lat: collectorLat,
+      collector_lng: collectorLng
     });
 
     if (error) {

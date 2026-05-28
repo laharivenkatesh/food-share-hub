@@ -3,7 +3,7 @@ import { useAllFoods } from "@/hooks/useMyPosts";
 import MapPreview, { openInGoogleMaps } from "@/components/MapPreview";
 import ReviewSection from "@/components/ReviewSection";
 import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { RealtimeStatus } from "@/types/food";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +11,20 @@ import { useTransactions } from "@/hooks/useTransactions";
 import LiveCountdown from "@/components/LiveCountdown";
 import { supabase } from "@/lib/supabase";
 import { getFoodTimes } from "@/lib/utils";
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // radius of Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 
 const realtimeOptions: RealtimeStatus[] = ["Still Available", "Almost Gone", "Not Available"];
@@ -27,6 +41,7 @@ export default function FoodDetail() {
   const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
   const [selectedPortions, setSelectedPortions] = useState(1);
   const [bookingBusy, setBookingBusy] = useState(false);
+  const prevDistancesRef = useRef<Record<string, number>>({});
 
   // Sync realtimeStatus state when food is loaded
   useEffect(() => {
@@ -39,6 +54,34 @@ export default function FoodDetail() {
   const foodTxs = food ? transactions.filter(t => t.food_id === food.id && t.status !== "cancelled") : [];
   const myTx = user ? foodTxs.find(t => t.collector_id === user.id) : undefined;
   const isCollector = !!myTx;
+
+  // Watch collector's live location and sync to Supabase transactions table
+  useEffect(() => {
+    if (!isCollector || !myTx || !user) return;
+    if (!("geolocation" in navigator)) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        if (myTx.collector_lat !== latitude || myTx.collector_lng !== longitude) {
+          await supabase
+            .from("transactions")
+            .update({
+              collector_lat: latitude,
+              collector_lng: longitude,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", myTx.id);
+        }
+      },
+      (err) => console.warn("Live location watch error:", err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isCollector, myTx?.id, user]);
 
   useEffect(() => {
     const fetchOppositeProfiles = async () => {
@@ -157,24 +200,41 @@ export default function FoodDetail() {
                 return;
               }
               setBookingBusy(true);
-              const toastId = toast.loading("Booking portions...");
+              const toastId = toast.loading("Acquiring location and booking portions...");
               
+              let lat: number | undefined;
+              let lng: number | undefined;
+
               try {
-                await requestFood(food.id, food.provider.id, selectedPortions);
+                const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                  navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                });
+                lat = pos.coords.latitude;
+                lng = pos.coords.longitude;
+              } catch (err) {
+                console.warn("Could not retrieve geolocation for booking, proceeding without it", err);
+              }
+
+              try {
+                await requestFood(food.id, food.provider.id, selectedPortions, lat, lng);
                 
-                // Add notifications to both donor and collector
+                // Construct detailed contact exchanging notification messages
+                const donorMessage = `${profile?.name || 'A user'} (${profile?.email || 'No email'}, ${profile?.phone || 'No phone'}) booked ${selectedPortions} portions of your ${food.name}.${lat && lng ? ` They are currently located at distance: ${calculateDistance(food.lat, food.lng, lat, lng).toFixed(2)} km away.` : ''}`;
+                
+                const collectorMessage = `You successfully booked ${selectedPortions} portions of ${food.name}. Provider: ${food.provider.name} (${food.provider.email || 'No email'}, ${food.provider.phone || 'No phone'}) located at ${food.address}.`;
+
                 await supabase.from("notifications").insert([
                   {
                     user_id: food.provider.id,
                     food_id: food.id,
                     title: "🍽️ New Portion Booking!",
-                    message: `${profile?.name || 'A user'} booked ${selectedPortions} portions of your ${food.name}.`
+                    message: donorMessage
                   },
                   {
                     user_id: user.id,
                     food_id: food.id,
                     title: "✅ Booking Confirmed!",
-                    message: `You successfully booked ${selectedPortions} portions of ${food.name}.`
+                    message: collectorMessage
                   }
                 ]);
 
@@ -204,6 +264,32 @@ export default function FoodDetail() {
           <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">Bookings & Claims</h3>
           {foodTxs.map((t) => {
             const collectorProfile = oppositeProfiles[t.collector_id];
+            
+            // Calculate collector's current distance and movement direction
+            let distanceText = "Location untracked";
+            let distanceIndicator = "";
+
+            if (t.collector_lat && t.collector_lng && food.lat && food.lng) {
+              const currentDist = calculateDistance(food.lat, food.lng, t.collector_lat, t.collector_lng);
+              const prevDist = prevDistancesRef.current[t.id];
+
+              if (prevDist !== undefined) {
+                if (currentDist < prevDist - 0.005) { // 5 meters sensitivity
+                  distanceIndicator = "Coming closer! 🟢";
+                } else if (currentDist > prevDist + 0.005) {
+                  distanceIndicator = "Moving away 🔴";
+                } else {
+                  distanceIndicator = "Stationary 🟡";
+                }
+              } else {
+                distanceIndicator = "Tracking 🟡";
+              }
+
+              // Update ref for next render/polling
+              prevDistancesRef.current[t.id] = currentDist;
+              distanceText = `${currentDist.toFixed(2)} km away`;
+            }
+
             return (
               <div key={t.id} className="bg-card p-4 rounded-xl border border-border shadow-sm space-y-3">
                 <div className="flex items-center gap-4">
@@ -214,6 +300,12 @@ export default function FoodDetail() {
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Collector Details</p>
                     <p className="font-extrabold text-foreground text-base truncate">{collectorProfile?.name || "Loading..."}</p>
                     <p className="text-xs font-bold text-primary-deep">{collectorProfile?.phone || "No phone provided"}</p>
+                    <p className="text-xs font-medium text-muted-foreground truncate">{collectorProfile?.email || "No email provided"}</p>
+                    {t.collector_lat && t.collector_lng && (
+                      <p className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1.5">
+                        📍 {distanceText} <span className="text-[10px] font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded">{distanceIndicator}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="badge-pill bg-primary/10 text-primary-deep font-extrabold">
@@ -250,6 +342,31 @@ export default function FoodDetail() {
 
     if (isCollector && myTx) {
       const donorProfile = oppositeProfiles[food.provider.id];
+      
+      // Calculate collector's own distance and movement direction relative to food
+      let distanceText = "Location untracked";
+      let distanceIndicator = "";
+
+      if (myTx.collector_lat && myTx.collector_lng && food.lat && food.lng) {
+        const currentDist = calculateDistance(food.lat, food.lng, myTx.collector_lat, myTx.collector_lng);
+        const prevDist = prevDistancesRef.current[myTx.id];
+
+        if (prevDist !== undefined) {
+          if (currentDist < prevDist - 0.005) {
+            distanceIndicator = "Coming closer! 🟢";
+          } else if (currentDist > prevDist + 0.005) {
+            distanceIndicator = "Moving away 🔴";
+          } else {
+            distanceIndicator = "Stationary 🟡";
+          }
+        } else {
+          distanceIndicator = "Tracking 🟡";
+        }
+
+        prevDistancesRef.current[myTx.id] = currentDist;
+        distanceText = `${currentDist.toFixed(2)} km away`;
+      }
+
       return (
         <div className="space-y-3">
           <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">Your Booking Status</h3>
@@ -262,6 +379,12 @@ export default function FoodDetail() {
                 <p className="text-[10px] font-bold uppercase text-muted-foreground">Donor Details</p>
                 <p className="font-extrabold text-foreground text-base truncate">{donorProfile?.name || food.provider.name}</p>
                 <p className="text-xs font-bold text-primary-deep">{donorProfile?.phone || "No phone provided"}</p>
+                <p className="text-xs font-medium text-muted-foreground truncate">{donorProfile?.email || "No email provided"}</p>
+                {myTx.collector_lat && myTx.collector_lng && (
+                  <p className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1.5">
+                    📍 {distanceText} <span className="text-[10px] font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded">{distanceIndicator}</span>
+                  </p>
+                )}
               </div>
               <div className="text-right">
                 <span className="badge-pill bg-primary/10 text-primary-deep font-extrabold">

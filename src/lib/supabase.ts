@@ -37,6 +37,7 @@ export interface ProfileRow {
   id: string;
   name: string;
   phone: string | null;
+  email: string | null;
   role: "Student" | "Provider" | "NGO";
   created_at: string;
 }

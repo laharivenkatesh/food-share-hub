@@ -12,6 +12,8 @@ export interface Provider {
   streak: number;
   reliability: "high" | "low";
   avatar: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface Review {

@@ -112,31 +112,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true;
 
-    const fetchDbProfile = async () => {
+    const syncAndFetchDbProfile = async () => {
       try {
-        const { data: profileRow } = await supabase
+        const { data: existingProfile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .single();
 
-        if (profileRow && active) {
-          setProfile((prev) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              name: profileRow.name || prev.name,
-              phone: profileRow.phone || prev.phone,
-              role: profileRow.role || prev.role,
-            };
-          });
+        const email = user.email || "";
+        const phone = user.phone || "";
+
+        if (!existingProfile) {
+          const { data: newProfile } = await supabase
+            .from("profiles")
+            .insert({
+              id: user.id,
+              name: "User",
+              phone: phone,
+              email: email,
+              role: "Provider"
+            })
+            .select()
+            .single();
+
+          if (newProfile && active) {
+            setProfile((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                name: newProfile.name,
+                phone: newProfile.phone || "",
+                role: newProfile.role,
+                email: newProfile.email || email,
+              };
+            });
+          }
+        } else {
+          if (!existingProfile.email) {
+            await supabase
+              .from("profiles")
+              .update({ email: email })
+              .eq("id", user.id);
+          }
+
+          if (active) {
+            setProfile((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                name: existingProfile.name || prev.name,
+                phone: existingProfile.phone || prev.phone,
+                role: existingProfile.role || prev.role,
+                email: existingProfile.email || email,
+              };
+            });
+          }
         }
       } catch (err) {
-        console.error("Error fetching detailed db profile:", err);
+        console.error("Error syncing and fetching db profile:", err);
       }
     };
 
-    fetchDbProfile();
+    syncAndFetchDbProfile();
 
     return () => {
       active = false;

@@ -45,6 +45,8 @@ function mapRow(row: any): FoodItem {
       streak: 1,
       reliability: "high",
       avatar: "🧑",
+      email: row.profiles?.email || "",
+      phone: row.profiles?.phone || "",
     },
   };
 }

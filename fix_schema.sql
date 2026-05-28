@@ -164,3 +164,12 @@ create trigger on_transaction_change
   execute function public.sync_food_booked_portions();
 
 
+-- ============================================================
+-- 6) ADD GEOLOCATION TRACKING & EMAIL TO SCHEMAS
+-- ============================================================
+alter table public.transactions add column if not exists collector_lat double precision;
+alter table public.transactions add column if not exists collector_lng double precision;
+
+alter table public.profiles add column if not exists email text;
+
+
