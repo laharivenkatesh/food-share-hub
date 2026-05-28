@@ -61,22 +61,26 @@ export function useMyPosts() {
       setPosts([]);
       return;
     }
-    if (!isBackground) setLoading(true);
+    try {
+      if (!isBackground) setLoading(true);
 
-    const { data, error } = await supabase
-      .from("foods")
-      .select("*, profiles!foods_user_id_profiles_fkey(*)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("foods")
+        .select("*, profiles!foods_user_id_profiles_fkey(*)")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("useMyPosts fetch error:", error);
+      if (error) {
+        console.error("useMyPosts fetch error:", error);
+        return;
+      }
+
+      setPosts((data || []).map(mapRow));
+    } catch (err) {
+      console.error("Exception in useMyPosts refresh:", err);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setPosts((data || []).map(mapRow));
-    setLoading(false);
   }, [user]);
 
   useEffect(() => {
@@ -154,20 +158,24 @@ export function useAllFoods() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async (isBackground = false) => {
-    if (!isBackground) setLoading(true);
-    const { data, error } = await supabase
-      .from("foods")
-      .select("*, profiles!foods_user_id_profiles_fkey(*)")
-      .order("created_at", { ascending: false });
+    try {
+      if (!isBackground) setLoading(true);
+      const { data, error } = await supabase
+        .from("foods")
+        .select("*, profiles!foods_user_id_profiles_fkey(*)")
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("useAllFoods fetch error:", error);
+      if (error) {
+        console.error("useAllFoods fetch error:", error);
+        return;
+      }
+
+      setFoods((data || []).map(mapRow));
+    } catch (err) {
+      console.error("Exception in useAllFoods refresh:", err);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setFoods((data || []).map(mapRow));
-    setLoading(false);
   }, []);
 
   useEffect(() => {

@@ -59,18 +59,23 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error fetching transactions:", error);
-    } else {
-      setTransactions(data || []);
+      if (error) {
+        console.error("Error fetching transactions:", error);
+      } else {
+        setTransactions(data || []);
+      }
+    } catch (err) {
+      console.error("Exception fetching transactions:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
 
   const computeStats = useCallback(async () => {
