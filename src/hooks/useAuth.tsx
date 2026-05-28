@@ -8,6 +8,9 @@ export interface UserProfile {
   email: string;
   phone?: string;
   created_at: string;
+  role: "Student" | "Provider" | "NGO";
+  streak: number;
+  trustScore: number;
 }
 
 export interface JWTUser {
@@ -52,12 +55,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: dbUser.user_metadata?.phone || "",
         });
 
+        let role: "Student" | "Provider" | "NGO" = "Provider";
+        let dbPhone = dbUser.user_metadata?.phone || "";
+        let dbName = dbUser.user_metadata?.name || "User";
+
+        try {
+          const { data: profileRow } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", dbUser.id)
+            .single();
+
+          if (profileRow) {
+            role = profileRow.role || "Provider";
+            if (profileRow.phone) dbPhone = profileRow.phone;
+            if (profileRow.name) dbName = profileRow.name;
+          }
+        } catch (e) {
+          console.error("Error fetching profile during init:", e);
+        }
+
         setProfile({
           id: dbUser.id,
-          name: dbUser.user_metadata?.name || "User",
+          name: dbName,
           email: dbUser.email || "",
-          phone: dbUser.user_metadata?.phone || "",
+          phone: dbPhone,
           created_at: dbUser.created_at,
+          role,
+          streak: 3,
+          trustScore: 4.8,
         });
       }
     } catch (err) {
@@ -71,19 +97,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeAuth();
 
     // Listen to Supabase auth changes automatically!
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setUser({
           id: session.user.id,
           email: session.user.email || "",
           phone: session.user.user_metadata?.phone || "",
         });
+
+        let role: "Student" | "Provider" | "NGO" = "Provider";
+        let dbPhone = session.user.user_metadata?.phone || "";
+        let dbName = session.user.user_metadata?.name || "User";
+
+        try {
+          const { data: profileRow } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", session.user.id)
+            .single();
+
+          if (profileRow) {
+            role = profileRow.role || "Provider";
+            if (profileRow.phone) dbPhone = profileRow.phone;
+            if (profileRow.name) dbName = profileRow.name;
+          }
+        } catch (e) {
+          console.error("Error fetching profile on auth change:", e);
+        }
+
         setProfile({
           id: session.user.id,
-          name: session.user.user_metadata?.name || "User",
+          name: dbName,
           email: session.user.email || "",
-          phone: session.user.user_metadata?.phone || "",
+          phone: dbPhone,
           created_at: session.user.created_at,
+          role,
+          streak: 3,
+          trustScore: 4.8,
         });
       } else {
         setUser(null);

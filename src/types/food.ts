@@ -44,7 +44,7 @@ export interface FoodItem {
   quantity: string;
   notes?: string;
   allowSplit: boolean;
-  bookedPortions: number;
+  bookedPortions?: number;
   provider: Provider;
   reviews: Review[];
   postedAt: string;
