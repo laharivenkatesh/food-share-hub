@@ -25,7 +25,7 @@ export default function Activity() {
           <div>
             <h2 className="text-xl font-bold text-primary-foreground">{profile?.name ?? "Guest"}</h2>
             <p className="text-sm text-primary-foreground/80 font-semibold mt-0.5 flex items-center gap-1">
-              {profile?.role ?? "User"} <span className="text-xs">•</span> <span><span className="text-amber-500">⭐️</span> 5.0 Trust Score</span>
+              Community Member <span className="text-xs">•</span> <span><span className="text-amber-500">⭐️</span> 5.0 Trust Score</span>
             </p>
           </div>
         </div>

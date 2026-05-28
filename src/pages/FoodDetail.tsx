@@ -1,8 +1,8 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useAllFoods } from "@/hooks/useMyPosts";
+import { useAllFoods, useMyPosts } from "@/hooks/useMyPosts";
 import MapPreview, { openInGoogleMaps } from "@/components/MapPreview";
 import ReviewSection from "@/components/ReviewSection";
-import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Navigation, Star, Award, Flame, CheckCircle2, Trash2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { RealtimeStatus } from "@/types/food";
@@ -36,6 +36,7 @@ export default function FoodDetail() {
   const { transactions, getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
 
   const { foods } = useAllFoods();
+  const { removePost } = useMyPosts();
   const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>("Still Available");
   const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
@@ -142,8 +143,22 @@ export default function FoodDetail() {
   const renderPortionBooking = () => {
     if (isDonor) {
       return (
-        <div className="bg-muted/50 p-4 rounded-2xl text-center text-xs font-bold text-muted-foreground">
-          👑 You are the provider of this listing. Waiting for bookings...
+        <div className="space-y-3">
+          <div className="bg-muted/50 p-4 rounded-2xl text-center text-xs font-bold text-muted-foreground">
+            👑 You are the provider of this listing. Waiting for bookings...
+          </div>
+          <button
+            onClick={async () => {
+              if (window.confirm("Are you sure you want to delete this food listing? This will cancel all bookings.")) {
+                await removePost(food.id);
+                toast.success("Listing deleted successfully!");
+                nav("/");
+              }
+            }}
+            className="w-full py-3.5 rounded-2xl bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-white font-extrabold text-sm transition-all flex items-center justify-center gap-2"
+          >
+            <Trash2 className="w-4.5 h-4.5" /> Delete This Listing
+          </button>
         </div>
       );
     }
@@ -453,6 +468,21 @@ export default function FoodDetail() {
         <button onClick={() => nav(-1)} className="absolute top-4 left-4 w-10 h-10 rounded-full bg-card/90 backdrop-blur flex items-center justify-center shadow-soft">
           <ArrowLeft className="w-5 h-5" />
         </button>
+        {isDonor && (
+          <button
+            onClick={async () => {
+              if (window.confirm("Are you sure you want to delete this food listing? This will cancel all bookings.")) {
+                await removePost(food.id);
+                toast.success("Listing deleted successfully!");
+                nav("/");
+              }
+            }}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-soft hover:bg-destructive/90 transition-all active:scale-95"
+            title="Delete listing"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       <div className="px-4 py-5 space-y-5">

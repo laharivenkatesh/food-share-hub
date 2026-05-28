@@ -56,12 +56,12 @@ export function useMyPosts() {
   const [posts, setPosts] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (isBackground = false) => {
     if (!user) {
       setPosts([]);
       return;
     }
-    setLoading(true);
+    if (!isBackground) setLoading(true);
 
     const { data, error } = await supabase
       .from("foods")
@@ -81,6 +81,14 @@ export function useMyPosts() {
 
   useEffect(() => {
     refresh();
+
+    const interval = setInterval(() => {
+      refresh(true);
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, [refresh]);
 
   const addPost = useCallback(
@@ -165,10 +173,10 @@ export function useAllFoods() {
   useEffect(() => {
     refresh();
 
-    // Setup auto-polling every 3 seconds for background updates
+    // Setup auto-polling every 1 second for background updates
     const interval = setInterval(() => {
       refresh(true);
-    }, 3000);
+    }, 1000);
 
     const channel = supabase
       .channel("foods-realtime")

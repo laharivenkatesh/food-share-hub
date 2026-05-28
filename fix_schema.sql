@@ -173,3 +173,52 @@ alter table public.transactions add column if not exists collector_lng double pr
 alter table public.profiles add column if not exists email text;
 
 
+-- ============================================================
+-- 7) ENABLE REALTIME WEBSOCKET CHANNELS FOR TABLES
+-- ============================================================
+-- Run this block to ensure Supabase pushes events in real-time
+do $$
+begin
+  -- Add public.foods if not already in publication
+  if not exists (
+    select 1 
+    from pg_publication_rel pr 
+    join pg_class c on pr.prrelid = c.oid 
+    join pg_publication p on pr.prpubid = p.oid 
+    where p.pubname = 'supabase_realtime' 
+      and c.relname = 'foods' 
+      and c.relnamespace = 'public'::regnamespace
+  ) then
+    alter publication supabase_realtime add table public.foods;
+  end if;
+
+  -- Add public.transactions if not already in publication
+  if not exists (
+    select 1 
+    from pg_publication_rel pr 
+    join pg_class c on pr.prrelid = c.oid 
+    join pg_publication p on pr.prpubid = p.oid 
+    where p.pubname = 'supabase_realtime' 
+      and c.relname = 'transactions' 
+      and c.relnamespace = 'public'::regnamespace
+  ) then
+    alter publication supabase_realtime add table public.transactions;
+  end if;
+
+  -- Add public.notifications if not already in publication
+  if not exists (
+    select 1 
+    from pg_publication_rel pr 
+    join pg_class c on pr.prrelid = c.oid 
+    join pg_publication p on pr.prpubid = p.oid 
+    where p.pubname = 'supabase_realtime' 
+      and c.relname = 'notifications' 
+      and c.relnamespace = 'public'::regnamespace
+  ) then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end
+$$;
+
+
+

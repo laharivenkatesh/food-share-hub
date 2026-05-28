@@ -122,7 +122,7 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row md:items-center gap-2 justify-center md:justify-start">
               <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">{profile.name}</h1>
               <span className="inline-block px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest bg-emerald-500 text-emerald-950 border border-emerald-400/30 w-max mx-auto md:mx-0 shadow-sm">
-                {profile.role}
+                Community Member
               </span>
             </div>
             

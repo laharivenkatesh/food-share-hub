@@ -3,7 +3,10 @@ import { Home, PlusCircle, User, Leaf, Bell, BellOff, Trash2, CheckCheck, Volume
 
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useTransactions } from "@/hooks/useTransactions";
+import { useAllFoods } from "@/hooks/useMyPosts";
+import { supabase } from "@/lib/supabase";
 import {
   Sheet,
   SheetContent,
@@ -11,6 +14,20 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // radius of Earth in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 function formatTimeAgo(dateStr: string) {
   try {
@@ -37,6 +54,43 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
   const { user, logout } = useAuth();
   const hideNav = location.pathname === "/auth";
+
+  const { transactions } = useTransactions();
+  const { foods } = useAllFoods();
+  const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
+  const bellDistancesRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      if (transactions.length > 0 && user) {
+        const otherUserIds = Array.from(new Set(
+          transactions.map(t => t.donor_id === user.id ? t.collector_id : t.donor_id)
+        ));
+
+        if (otherUserIds.length > 0) {
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", otherUserIds);
+
+          if (data) {
+            const profileMap: Record<string, any> = {};
+            data.forEach(p => {
+              profileMap[p.id] = p;
+            });
+            setOppositeProfiles(profileMap);
+          }
+        }
+      }
+    };
+    fetchProfiles();
+  }, [transactions, user]);
+
+  const hasActiveBookings = transactions.some(t =>
+    t.donor_id === user?.id &&
+    t.collector_id !== user?.id &&
+    t.status === "pending"
+  );
 
   const {
     notifications,
@@ -90,11 +144,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {/* Premium Notification Center Bell Button */}
               <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
                 <SheetTrigger asChild>
-                  <button className="relative w-9 h-9 rounded-2xl bg-muted/60 flex items-center justify-center hover:bg-muted transition-all active:scale-95 group">
-                    <Bell className={`w-4.5 h-4.5 text-foreground/80 group-hover:text-primary-deep transition-colors ${unreadCount > 0 ? "animate-wiggle" : ""}`} />
-                    {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-5 h-5 rounded-full bg-urgent text-urgent-foreground text-[10px] font-extrabold px-1 flex items-center justify-center border border-card shadow-soft animate-pulse">
-                        {unreadCount}
+                  <button className={`relative w-9 h-9 rounded-2xl flex items-center justify-center transition-all active:scale-95 group ${
+                    hasActiveBookings
+                      ? "bg-orange-500/15 border border-orange-500/30 ring-2 ring-orange-500 ring-offset-1 shadow-[0_0_12px_rgba(249,115,22,0.4)] animate-pulse"
+                      : "bg-muted/60 hover:bg-muted"
+                  }`}>
+                    <Bell className={`w-4.5 h-4.5 transition-colors ${
+                      hasActiveBookings
+                        ? "text-orange-500 animate-wiggle"
+                        : unreadCount > 0
+                        ? "text-primary-deep animate-wiggle"
+                        : "text-foreground/80 group-hover:text-primary-deep"
+                    }`} />
+                    {(unreadCount > 0 || hasActiveBookings) && (
+                      <span className={`absolute -top-1.5 -right-1.5 min-w-5 h-5 rounded-full text-white text-[10px] font-extrabold px-1 flex items-center justify-center border border-card shadow-soft animate-pulse ${
+                        hasActiveBookings ? "bg-orange-500" : "bg-urgent"
+                      }`}>
+                        {hasActiveBookings ? "!" : unreadCount}
                       </span>
                     )}
                   </button>
@@ -214,6 +280,82 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             <span className="inline-block text-[10px] font-bold text-muted-foreground/80 pt-0.5">
                               {formatTimeAgo(notif.created_at)}
                             </span>
+
+                            {/* Live Booking & Distance tracking inside the notification card */}
+                            {(() => {
+                              const matchingTxs = transactions.filter(t => 
+                                t.food_id === notif.food_id && 
+                                t.status !== "cancelled" &&
+                                (t.donor_id === user.id || t.collector_id === user.id)
+                              );
+
+                              if (matchingTxs.length === 0) return null;
+
+                              return (
+                                <div className="mt-2.5 space-y-2">
+                                  {matchingTxs.map((t) => {
+                                    const isDonorCheck = t.donor_id === user.id;
+                                    const oppProfile = oppositeProfiles[isDonorCheck ? t.collector_id : t.donor_id];
+                                    const foodItem = foods.find(f => f.id === t.food_id);
+
+                                    let distanceText = "Location untracked";
+                                    let distanceIndicator = "";
+
+                                    if (t.collector_lat && t.collector_lng && foodItem?.lat && foodItem?.lng) {
+                                      const currentDist = calculateDistance(foodItem.lat, foodItem.lng, t.collector_lat, t.collector_lng);
+                                      const prevDist = bellDistancesRef.current[t.id];
+
+                                      if (prevDist !== undefined) {
+                                        if (currentDist < prevDist - 0.005) {
+                                          distanceIndicator = "Coming closer! 🟢";
+                                        } else if (currentDist > prevDist + 0.005) {
+                                          distanceIndicator = "Moving away 🔴";
+                                        } else {
+                                          distanceIndicator = "Stationary 🟡";
+                                        }
+                                      } else {
+                                        distanceIndicator = "Tracking 🟡";
+                                      }
+
+                                      bellDistancesRef.current[t.id] = currentDist;
+                                      distanceText = `${currentDist.toFixed(2)} km away`;
+                                    }
+
+                                    return (
+                                      <div 
+                                        key={t.id} 
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="p-2.5 rounded-xl bg-muted/65 border border-border/80 text-[11px] space-y-1.5 font-semibold text-foreground"
+                                      >
+                                        <div className="flex items-center justify-between border-b border-border/40 pb-1.5 mb-1">
+                                          <span className="text-[9px] uppercase font-bold text-muted-foreground">
+                                            {isDonorCheck ? "👤 Booked User" : "👤 Provider"}
+                                          </span>
+                                          <span className="badge-pill bg-primary-deep/10 text-primary-deep !text-[9px] font-extrabold normal-case py-0.5 px-1.5">
+                                            {t.portions} portions
+                                          </span>
+                                        </div>
+                                        
+                                        <div className="space-y-0.5 leading-normal">
+                                          <p className="font-extrabold text-foreground">{oppProfile?.name || (isDonorCheck ? "Loading..." : foodItem?.provider.name || "Unknown")}</p>
+                                          <p className="text-muted-foreground flex items-center gap-1">📞 {oppProfile?.phone || (isDonorCheck ? "No phone" : foodItem?.provider.phone || "No phone")}</p>
+                                          <p className="text-muted-foreground flex items-center gap-1 truncate max-w-[200px]">✉️ {oppProfile?.email || (isDonorCheck ? "No email" : foodItem?.provider.email || "No email")}</p>
+                                        </div>
+
+                                        {t.collector_lat && t.collector_lng && (
+                                          <div className="pt-1.5 border-t border-border/40 mt-1 flex items-center justify-between text-[10px] font-bold text-emerald-600">
+                                            <span>📍 {distanceText}</span>
+                                            <span className="text-[9px] font-extrabold bg-emerald-500/10 px-1 py-0.5 rounded tracking-wide">
+                                              {distanceIndicator}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {/* Quick delete button */}

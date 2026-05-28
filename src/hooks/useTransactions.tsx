@@ -115,7 +115,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
 
     const interval = setInterval(() => {
       fetchTransactions();
-    }, 3000);
+    }, 1000);
 
     const channel = supabase
       .channel("transactions-realtime")

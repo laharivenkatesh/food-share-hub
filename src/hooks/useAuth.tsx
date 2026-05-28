@@ -8,7 +8,7 @@ export interface UserProfile {
   email: string;
   phone?: string;
   created_at: string;
-  role: "Student" | "Provider" | "NGO";
+  role: string;
   streak: number;
   trustScore: number;
 }
@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: dbUser.email || "",
           phone: dbUser.user_metadata?.phone || "",
           created_at: dbUser.created_at,
-          role: dbUser.user_metadata?.role || "Provider",
+          role: dbUser.user_metadata?.role || "Community Member",
           streak: 3,
           trustScore: 4.8,
         });
@@ -90,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: session.user.email || "",
           phone: session.user.user_metadata?.phone || "",
           created_at: session.user.created_at,
-          role: session.user.user_metadata?.role || "Provider",
+          role: session.user.user_metadata?.role || "Community Member",
           streak: 3,
           trustScore: 4.8,
         });
@@ -131,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: "User",
               phone: phone,
               email: email,
-              role: "Provider"
+              role: "Community Member"
             })
             .select()
             .single();
