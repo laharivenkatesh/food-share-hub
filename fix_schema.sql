@@ -61,10 +61,10 @@ create table if not exists public.notifications (
 
 alter table public.notifications enable row level security;
 
--- Drop policies if they exist so this script can be run multiple times safely
 drop policy if exists "Users can view their own notifications" on public.notifications;
 drop policy if exists "Users can update their own notifications" on public.notifications;
 drop policy if exists "Users can delete their own notifications" on public.notifications;
+drop policy if exists "Users can insert notifications" on public.notifications;
 
 create policy "Users can view their own notifications"
   on public.notifications for select using (auth.uid() = user_id);
@@ -74,6 +74,9 @@ create policy "Users can update their own notifications"
 
 create policy "Users can delete their own notifications"
   on public.notifications for delete using (auth.uid() = user_id);
+
+create policy "Users can insert notifications"
+  on public.notifications for insert with check (auth.uid() is not null);
 
 -- ============================================================
 -- 4) CREATE THE TRIGGER FUNCTION FOR FOOD NOTIFICATIONS
