@@ -55,33 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: dbUser.user_metadata?.phone || "",
         });
 
-        let role: "Student" | "Provider" | "NGO" = "Provider";
-        let dbPhone = dbUser.user_metadata?.phone || "";
-        let dbName = dbUser.user_metadata?.name || "User";
-
-        try {
-          const { data: profileRow } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", dbUser.id)
-            .single();
-
-          if (profileRow) {
-            role = profileRow.role || "Provider";
-            if (profileRow.phone) dbPhone = profileRow.phone;
-            if (profileRow.name) dbName = profileRow.name;
-          }
-        } catch (e) {
-          console.error("Error fetching profile during init:", e);
-        }
-
         setProfile({
           id: dbUser.id,
-          name: dbName,
+          name: dbUser.user_metadata?.name || "User",
           email: dbUser.email || "",
-          phone: dbPhone,
+          phone: dbUser.user_metadata?.phone || "",
           created_at: dbUser.created_at,
-          role,
+          role: dbUser.user_metadata?.role || "Provider",
           streak: 3,
           trustScore: 4.8,
         });
@@ -97,41 +77,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeAuth();
 
     // Listen to Supabase auth changes automatically!
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser({
           id: session.user.id,
           email: session.user.email || "",
           phone: session.user.user_metadata?.phone || "",
         });
-
-        let role: "Student" | "Provider" | "NGO" = "Provider";
-        let dbPhone = session.user.user_metadata?.phone || "";
-        let dbName = session.user.user_metadata?.name || "User";
-
-        try {
-          const { data: profileRow } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", session.user.id)
-            .single();
-
-          if (profileRow) {
-            role = profileRow.role || "Provider";
-            if (profileRow.phone) dbPhone = profileRow.phone;
-            if (profileRow.name) dbName = profileRow.name;
-          }
-        } catch (e) {
-          console.error("Error fetching profile on auth change:", e);
-        }
-
         setProfile({
           id: session.user.id,
-          name: dbName,
+          name: session.user.user_metadata?.name || "User",
           email: session.user.email || "",
-          phone: dbPhone,
+          phone: session.user.user_metadata?.phone || "",
           created_at: session.user.created_at,
-          role,
+          role: session.user.user_metadata?.role || "Provider",
           streak: 3,
           trustScore: 4.8,
         });
@@ -145,6 +104,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Separate async effect to load extended database profile attributes (like role)
+  // once the user is authenticated, without blocking/deadlocking the auth lifecycle.
+  useEffect(() => {
+    if (!user) return;
+
+    let active = true;
+
+    const fetchDbProfile = async () => {
+      try {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        if (profileRow && active) {
+          setProfile((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              name: profileRow.name || prev.name,
+              phone: profileRow.phone || prev.phone,
+              role: profileRow.role || prev.role,
+            };
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching detailed db profile:", err);
+      }
+    };
+
+    fetchDbProfile();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   /**
    * Logs in a user using email and password
