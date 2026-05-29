@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Leaf, Mail, Phone, Lock, ArrowLeft, ArrowRight, ShieldCheck, RefreshCw, KeyRound, User as UserIcon, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -12,16 +13,19 @@ export default function Auth() {
   // Navigation redirect destination
   const from = location.state?.from?.pathname || "/";
 
+  const [authMode, setAuthMode] = useState<"login" | "signup" | "reset">(
+    new URLSearchParams(location.search).get("mode") === "reset" ? "reset" : "login"
+  );
+
   // If already authenticated, redirect away from auth page
   useEffect(() => {
-    if (user) {
+    if (user && authMode !== "reset") {
       navigate(from, { replace: true });
     }
-  }, [user, navigate, from]);
+  }, [user, navigate, from, authMode]);
 
   // Auth flow states
   const [step, setStep] = useState<"email" | "otp">("email");
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   
   // Signup/Login fields
   const [email, setEmail] = useState("");
@@ -110,6 +114,30 @@ export default function Auth() {
     toast.success("Password reset email sent! Check your inbox.");
   };
 
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) {
+      toast.error("Please enter a new password.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match. Please verify.");
+      return;
+    }
+
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: password });
+    setBusy(false);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Password updated successfully!");
+      // Redirect to home dashboard
+      navigate("/", { replace: true });
+    }
+  };
+
   // Step 1: Submit Email to receive OTP
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,7 +199,7 @@ export default function Auth() {
       password, 
       name, 
       phone, 
-      authMode
+      authMode === "signup" ? "signup" : "login"
     );
     setBusy(false);
 
@@ -201,7 +229,7 @@ export default function Auth() {
       authMode === "signup" ? password : undefined, 
       authMode === "signup" ? name : undefined, 
       authMode === "signup" ? phone : undefined, 
-      authMode
+      authMode === "signup" ? "signup" : "login"
     );
     setBusy(false);
 
@@ -318,13 +346,98 @@ export default function Auth() {
             Zerra Food Hub
           </h1>
           <p className="text-xs text-muted-foreground leading-relaxed px-4">
-            {step === "email"
+            {authMode === "reset"
+              ? "Reset your account password. Choose a strong new password."
+              : step === "email"
               ? "Share leftover food, save the planet. Authenticate to continue."
               : "We have dispatched a 6-digit security code."}
           </p>
         </div>
 
-        {step === "email" ? (
+        {authMode === "reset" ? (
+          <form onSubmit={handleUpdatePassword} className="space-y-4">
+            {/* New Password field */}
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                New Password
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-3 text-muted-foreground">
+                  <Lock className="w-4 h-4" />
+                </span>
+                <input
+                  className="input-field pl-10 pr-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                  placeholder="••••••••"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm Password field */}
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+                Confirm New Password
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-3 text-muted-foreground">
+                  <Lock className="w-4 h-4" />
+                </span>
+                <input
+                  className="input-field pl-10 pr-10 py-2.5 text-sm rounded-xl focus:ring-1 focus:ring-primary-deep focus:border-primary-deep"
+                  placeholder="••••••••"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-primary flex items-center justify-center gap-2 mt-2 h-11 text-sm rounded-xl"
+            >
+              {busy ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Updating...
+                </>
+              ) : (
+                <>
+                  Update Password <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("login");
+                navigate("/auth", { replace: true });
+              }}
+              className="w-full text-center text-xs font-bold text-muted-foreground hover:text-foreground pt-2"
+            >
+              Back to Login
+            </button>
+          </form>
+        ) : step === "email" ? (
           <div className="space-y-5">
             {/* Tab Selector */}
             <div className="relative flex p-1 bg-muted rounded-2xl border border-border">
