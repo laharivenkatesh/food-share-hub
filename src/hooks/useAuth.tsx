@@ -42,26 +42,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize and restore session from Supabase
-  const initializeAuth = async () => {
+  const refreshProfile = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
       if (session?.user) {
-        const { user: dbUser } = session;
         setUser({
-          id: dbUser.id,
-          email: dbUser.email || "",
-          phone: dbUser.user_metadata?.phone || "",
+          id: session.user.id,
+          email: session.user.email || "",
+          phone: session.user.user_metadata?.phone || "",
         });
-
         setProfile({
-          id: dbUser.id,
-          name: dbUser.user_metadata?.name || "User",
-          email: dbUser.email || "",
-          phone: dbUser.user_metadata?.phone || "",
-          created_at: dbUser.created_at,
-          role: dbUser.user_metadata?.role || "Community Member",
+          id: session.user.id,
+          name: session.user.user_metadata?.name || "User",
+          email: session.user.email || "",
+          phone: session.user.user_metadata?.phone || "",
+          created_at: session.user.created_at,
+          role: session.user.user_metadata?.role || "Community Member",
           streak: 3,
           trustScore: 4.8,
         });
@@ -74,9 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    initializeAuth();
+    refreshProfile();
 
-    // Listen to Supabase auth changes automatically!
+    // Listen to Supabase auth changes dynamically in background
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser({
@@ -271,13 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /**
-   * Refresh current profile details
-   */
-  const refreshProfile = async () => {
-    // With Supabase onAuthStateChange this is often unneeded, but implemented for compatibility
-    await initializeAuth();
-  };
+
 
   /**
    * Purges session and log out
