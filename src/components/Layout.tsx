@@ -104,7 +104,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setSoundEnabled,
   } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "unread">("unread");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
@@ -197,20 +197,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     {/* Filter Tabs */}
                     <div className="flex mt-4 bg-muted/60 p-1 rounded-xl">
                       <button
-                        onClick={() => setActiveTab("all")}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          activeTab === "all" ? "bg-card shadow-soft text-foreground" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        All ({notifications.length})
-                      </button>
-                      <button
                         onClick={() => setActiveTab("unread")}
                         className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
                           activeTab === "unread" ? "bg-card shadow-soft text-foreground" : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         Unread ({unreadCount})
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("all")}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          activeTab === "all" ? "bg-card shadow-soft text-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        All ({notifications.length})
                       </button>
                     </div>
                   </div>

@@ -35,7 +35,7 @@ export default function FoodDetail() {
   const { user, profile } = useAuth();
   const { transactions, getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
 
-  const { foods } = useAllFoods();
+  const { foods, loading: foodsLoading } = useAllFoods();
   const { removePost } = useMyPosts();
   const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>("Still Available");
@@ -96,6 +96,16 @@ export default function FoodDetail() {
       nav("/");
     }
   }, [isHardExpired, nav]);
+
+  if (foodsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-center">
+        <div className="space-y-4">
+          <p className="text-muted-foreground animate-pulse font-semibold">Loading food details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!food) return <div className="p-8 text-center">Food not found. <Link to="/" className="text-primary-deep font-bold">Go home</Link></div>;
 
