@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import FoodCard from "@/components/FoodCard";
 import Chip from "@/components/Chip";
-import { Category } from "@/types/food";
 import { Flame, Award, MapPin, RefreshCw, Navigation, Phone, Heart, ChevronDown, ChevronUp } from "lucide-react";
 import { useAllFoods } from "@/hooks/useMyPosts";
 import { useTransactions } from "@/hooks/useTransactions";
 import { openInGoogleMaps } from "@/components/MapPreview";
 import { useNavigate } from "react-router-dom";
 import { getFoodTimes } from "@/lib/utils";
-
-const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
-const sorts = ["Newest", "Expiry Soon", "Quantity High", "Price Low"] as const;
 
 // ─── NGO data ─────────────────────────────────────────────────────────────────
 interface NGO {
@@ -107,8 +103,6 @@ function NGOCard({ ngo, distance, onDonate }: { ngo: NGO; distance: number | nul
 
 // ─── Main Home ────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [activeCats, setActiveCats] = useState<Category[]>([]);
-  const [sort, setSort] = useState<(typeof sorts)[number]>("Newest");
   const { foods: dbFoods, loading, refresh } = useAllFoods();
   const { userStats } = useTransactions();
   const nav = useNavigate();
@@ -151,9 +145,6 @@ export default function Home() {
     );
   }, []);
 
-  const toggleCat = (c: Category) =>
-    setActiveCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
-
   const list = useMemo(() => {
     let arr = [...dbFoods];
     
@@ -169,14 +160,8 @@ export default function Home() {
         (f) => f.lat && f.lng && calculateDistance(userLoc.lat, userLoc.lng, f.lat, f.lng) <= 50
       );
     }
-    if (activeCats.length) arr = arr.filter((f) => activeCats.includes(f.category));
-    switch (sort) {
-      case "Expiry Soon": arr.sort((a, b) => a.expiryHours - b.expiryHours); break;
-      case "Quantity High": arr.sort((a, b) => b.feeds - a.feeds); break;
-      case "Price Low": arr.sort((a, b) => a.price - b.price); break;
-    }
     return arr;
-  }, [activeCats, sort, dbFoods, userLoc]);
+  }, [dbFoods, userLoc]);
 
 
   const nearbyNGOs = useMemo(() => {
@@ -255,24 +240,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* Sort */}
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-bold text-muted-foreground uppercase shrink-0">Sort:</label>
-        <select
-          value={sort}
-          onChange={(e) => setSort(e.target.value as typeof sort)}
-          className="flex-1 px-3 py-2 rounded-xl bg-card border border-border text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          {sorts.map((s) => <option key={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {/* Category chips */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-        {categories.map((c) => (
-          <Chip key={c} label={c} active={activeCats.includes(c)} onClick={() => toggleCat(c)} />
-        ))}
-      </div>
+      {/* Categories chips and sort dropdown removed */}
 
       {/* Food list */}
       {loading && (

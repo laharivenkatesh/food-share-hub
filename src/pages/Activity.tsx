@@ -1,77 +1,19 @@
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Settings,
   Leaf,
-  ShieldCheck,
   Calendar,
-  Sparkles,
   Flame,
-  Award,
   MapPin,
-  RefreshCw,
-  Cookie,
-  FolderLock,
   ChevronRight,
-  TrendingUp,
-  LogOut,
   Star,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useTransactions } from "@/hooks/useTransactions";
-import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
 
 export default function Activity() {
   const navigate = useNavigate();
-  const { user, profile, logout, refreshProfile } = useAuth();
+  const { profile } = useAuth();
   const { userStats } = useTransactions();
-  const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<"session" | "stats">("stats");
-
-  // JWT parsing state
-  const [jwtHeader, setJwtHeader] = useState<any>(null);
-  const [jwtPayload, setJwtPayload] = useState<any>(null);
-
-  // Decode JWT local storage token or Supabase session to display insights
-  useEffect(() => {
-    const fetchAndDecodeToken = async () => {
-      let token = localStorage.getItem("zerra_jwt_token");
-      if (!token) {
-        const { data: { session } } = await supabase.auth.getSession();
-        token = session?.access_token || null;
-      }
-      if (!token) return;
-
-      try {
-        const parts = token.split(".");
-        if (parts.length === 3) {
-          const headerDecoded = JSON.parse(atob(parts[0]));
-          const payloadDecoded = JSON.parse(atob(parts[1]));
-          setJwtHeader(headerDecoded);
-          setJwtPayload(payloadDecoded);
-        }
-      } catch (e) {
-        console.error("Failed to decode JWT locally:", e);
-      }
-    };
-
-    fetchAndDecodeToken();
-  }, [user]);
-
-  const handleRefresh = async () => {
-    setBusy(true);
-    await refreshProfile();
-    setBusy(false);
-    toast.success("Profile reloaded from database!");
-  };
-
-  const handleLogout = async () => {
-    if (confirm("Are you sure you want to sign out of this secure session?")) {
-      await logout();
-      navigate("/auth");
-    }
-  };
 
   if (!profile) {
     return (
@@ -100,23 +42,6 @@ export default function Activity() {
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <h1 className="text-3xl font-extrabold font-serif tracking-tight text-foreground">Profile</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={busy}
-            className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center shadow-sm hover:bg-muted transition-all"
-            title="Refresh profile details"
-          >
-            <RefreshCw className={`w-4 h-4 text-muted-foreground ${busy ? "animate-spin" : ""}`} />
-          </button>
-          <button
-            onClick={handleLogout}
-            className="w-10 h-10 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center shadow-sm hover:bg-destructive hover:text-white transition-all text-destructive"
-            title="Secure Sign Out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
       </div>
 
       {/* Main Card */}
@@ -177,170 +102,65 @@ export default function Activity() {
         </div>
       </div>
 
-      {/* Segmented Control / Tabs */}
-      <div className="flex border border-border bg-card p-1 rounded-2xl shadow-sm mt-6">
-        <button
-          onClick={() => setActiveTab("stats")}
-          className={`flex-1 py-2.5 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-            activeTab === "stats"
-              ? "bg-muted text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" /> Sharing Metrics
-        </button>
-        
-        <button
-          onClick={() => setActiveTab("session")}
-          className={`flex-1 py-2.5 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-            activeTab === "session"
-              ? "bg-muted text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <FolderLock className="w-4 h-4" /> JWT Session
-        </button>
-      </div>
-
-      {/* Tab Panels */}
-      <div className="animate-fade-up pt-1">
-        {activeTab === "stats" ? (
-          /* ================= PANEL: SHARING METRICS ================= */
-          <div className="space-y-4">
-            <div className="card-soft p-4 border border-border bg-card space-y-3">
-              <h3 className="text-sm font-extrabold text-foreground">Your Contribution Summary</h3>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                By participating in Zerra's food redistribution network, you are directly mitigating waste and supporting local communities.
-              </p>
-              
-              <div className="space-y-3 pt-1">
-                <div>
-                  <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
-                    <span>Community Meals Saved</span>
-                    <span>14 / 20 Saved</span>
-                  </div>
-                  <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
-                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: "70%" }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
-                    <span>CO2 Offset (Carbon reduction)</span>
-                    <span>8.5 kg Offset</span>
-                  </div>
-                  <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
-                    <div className="bg-emerald-400 h-full rounded-full" style={{ width: "45%" }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
-                    <span>NGO Partnerships Supported</span>
-                    <span>4 Partners</span>
-                  </div>
-                  <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
-                    <div className="bg-emerald-600 h-full rounded-full" style={{ width: "90%" }} />
-                  </div>
-                </div>
+      {/* Sharing Metrics Section */}
+      <div className="space-y-4 pt-2">
+        <div className="card-soft p-4 border border-border bg-card space-y-3">
+          <h3 className="text-sm font-extrabold text-foreground">Your Contribution Summary</h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            By participating in Zerra's food redistribution network, you are directly mitigating waste and supporting local communities.
+          </p>
+          
+          <div className="space-y-3 pt-1">
+            <div>
+              <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
+                <span>Community Meals Saved</span>
+                <span>14 / 20 Saved</span>
+              </div>
+              <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: "70%" }} />
               </div>
             </div>
 
-            <div className="card-soft p-4 border border-border bg-card space-y-3">
-              <h3 className="text-sm font-extrabold text-foreground">Next Action Steps</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => navigate("/")}
-                  className="py-3 px-2 rounded-xl bg-primary-deep text-white font-bold text-[11px] text-center hover:opacity-95 transition-all shadow-sm flex items-center justify-center gap-1"
-                >
-                  Browse Food <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
+                <span>CO2 Offset (Carbon reduction)</span>
+                <span>8.5 kg Offset</span>
+              </div>
+              <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
+                <div className="bg-emerald-400 h-full rounded-full" style={{ width: "45%" }} />
+              </div>
+            </div>
 
-                <button
-                  onClick={() => navigate("/post")}
-                  className="py-3 px-2 rounded-xl bg-muted text-foreground border border-border font-bold text-[11px] text-center hover:bg-muted/70 transition-all flex items-center justify-center gap-1"
-                >
-                  Post Food <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+            <div>
+              <div className="flex justify-between text-xs font-bold text-muted-foreground mb-1">
+                <span>NGO Partnerships Supported</span>
+                <span>4 Partners</span>
+              </div>
+              <div className="w-full bg-muted h-2 rounded-full overflow-hidden border border-border">
+                <div className="bg-emerald-600 h-full rounded-full" style={{ width: "90%" }} />
               </div>
             </div>
           </div>
-        ) : (
-          /* ================= PANEL: SECURE SESSION DETAILS (JWT CONSOLE) ================= */
-          <div className="space-y-4">
-            <div className="card-soft p-4 border border-border bg-card space-y-3">
-              <h2 className="text-sm font-extrabold text-foreground flex items-center gap-1.5">
-                <ShieldCheck className="w-4.5 h-4.5 text-emerald-600" /> Cryptographic JWT Inspection
-              </h2>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                This console extracts and displays your cryptographically signed active Web Token (JWT) session. 
-                The signature is securely verified on each server request, preventing session spoofing.
-              </p>
+        </div>
 
-              {jwtHeader && jwtPayload ? (
-                <div className="space-y-3">
-                  {/* Part 1: JWT Header */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      <span>1. JWT Decoded Header</span>
-                      <span className="badge-pill bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 !py-0.5">Header</span>
-                    </div>
-                    <pre className="bg-muted p-3 rounded-lg text-[10px] font-mono text-foreground overflow-x-auto border border-border max-h-32">
-                      {JSON.stringify(jwtHeader, null, 2)}
-                    </pre>
-                  </div>
+        <div className="card-soft p-4 border border-border bg-card space-y-3">
+          <h3 className="text-sm font-extrabold text-foreground">Next Action Steps</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => navigate("/")}
+              className="py-3 px-2 rounded-xl bg-primary-deep text-white font-bold text-[11px] text-center hover:opacity-95 transition-all shadow-sm flex items-center justify-center gap-1"
+            >
+              Browse Food <ChevronRight className="w-3.5 h-3.5" />
+            </button>
 
-                  {/* Part 2: JWT Claims */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      <span>2. Decoded Claims Payload</span>
-                      <span className="badge-pill bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 !py-0.5">Payload</span>
-                    </div>
-                    <pre className="bg-muted p-3 rounded-lg text-[10px] font-mono text-foreground overflow-x-auto border border-border max-h-48">
-                      {JSON.stringify(jwtPayload, null, 2)}
-                    </pre>
-                  </div>
-
-                  {/* Extra metadata grid */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <div className="p-2.5 bg-muted/40 border border-border rounded-xl flex items-center gap-2">
-                      <Cookie className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Algorithm</p>
-                        <p className="text-[10px] font-extrabold text-foreground truncate">{jwtHeader.alg || "HS256"}</p>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 bg-muted/40 border border-border rounded-xl flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Expiry Time</p>
-                        <p className="text-[10px] font-extrabold text-foreground truncate">
-                          {jwtPayload.exp ? new Date(jwtPayload.exp * 1000).toLocaleDateString() : "Never"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-xs text-muted-foreground italic bg-muted rounded-xl border border-dashed border-border">
-                  No active local storage JWT found. Please log in again to populate session parameters.
-                </div>
-              )}
-            </div>
-
-            <div className="bg-emerald-500/5 border border-emerald-500/10 p-3.5 rounded-xl flex items-start gap-2.5">
-              <ShieldCheck className="w-4.5 h-4.5 text-emerald-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-xs font-extrabold text-foreground">Session Security Integrity</h4>
-                <p className="text-[10px] text-muted-foreground leading-normal mt-0.5">
-                  Your token is stored locally to maintain seamless authentication. Upon calling secure REST actions, 
-                  the server extracts this token from the authorization headers and verifies its signature.
-                </p>
-              </div>
-            </div>
+            <button
+              onClick={() => navigate("/post")}
+              className="py-3 px-2 rounded-xl bg-muted text-foreground border border-border font-bold text-[11px] text-center hover:bg-muted/70 transition-all flex items-center justify-center gap-1"
+            >
+              Post Food <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
