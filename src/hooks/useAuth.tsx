@@ -90,6 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           streak: 3,
           trustScore: 4.8,
         });
+
+        if (_event === "PASSWORD_RECOVERY") {
+          window.location.href = "/auth?mode=reset";
+        }
       } else {
         setUser(null);
         setProfile(null);
