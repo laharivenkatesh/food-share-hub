@@ -57,18 +57,23 @@ function mapRow(row: any): FoodItem {
   };
 }
 
+let globalMyPostsCache: FoodItem[] = [];
+let globalMyPostsLoaded = false;
+
 export function useMyPosts() {
   const { user, loading: authLoading } = useAuth();
-  const [posts, setPosts] = useState<FoodItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [posts, setPosts] = useState<FoodItem[]>(globalMyPostsCache);
+  const [loading, setLoading] = useState(!globalMyPostsLoaded);
 
   const refresh = useCallback(async (isBackground = false) => {
     if (!user) {
       setPosts([]);
+      globalMyPostsCache = [];
+      globalMyPostsLoaded = false;
       return;
     }
     try {
-      if (!isBackground) setLoading(true);
+      if (!isBackground && !globalMyPostsLoaded) setLoading(true);
 
       const { data, error } = await supabase
         .from("foods")
@@ -81,7 +86,10 @@ export function useMyPosts() {
         return;
       }
 
-      setPosts((data || []).map(mapRow));
+      const mapped = (data || []).map(mapRow);
+      globalMyPostsCache = mapped;
+      globalMyPostsLoaded = true;
+      setPosts(mapped);
     } catch (err) {
       console.error("Exception in useMyPosts refresh:", err);
     } finally {
@@ -149,6 +157,7 @@ export function useMyPosts() {
       }
 
       const newFood = mapRow(data);
+      globalMyPostsCache = [newFood, ...globalMyPostsCache];
       setPosts((prev) => [newFood, ...prev]);
       return { ok: true as const, data: newFood };
     },
@@ -157,6 +166,7 @@ export function useMyPosts() {
 
   const removePost = useCallback(async (id: string) => {
     await supabase.from("foods").delete().eq("id", id);
+    globalMyPostsCache = globalMyPostsCache.filter((p) => p.id !== id);
     setPosts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
@@ -171,14 +181,17 @@ export function useMyPosts() {
   return { posts, loading, addPost, removePost, refresh, getLastPostTime };
 }
 
+let globalFoodsCache: FoodItem[] = [];
+let globalFoodsLoaded = false;
+
 export function useAllFoods() {
   const { loading: authLoading } = useAuth();
-  const [foods, setFoods] = useState<FoodItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [foods, setFoods] = useState<FoodItem[]>(globalFoodsCache);
+  const [loading, setLoading] = useState(!globalFoodsLoaded);
 
   const refresh = useCallback(async (isBackground = false) => {
     try {
-      if (!isBackground) setLoading(true);
+      if (!isBackground && !globalFoodsLoaded) setLoading(true);
       const { data, error } = await supabase
         .from("foods")
         .select("*, profiles!foods_user_id_profiles_fkey(*), reviews(*)")
@@ -189,7 +202,10 @@ export function useAllFoods() {
         return;
       }
 
-      setFoods((data || []).map(mapRow));
+      const mapped = (data || []).map(mapRow);
+      globalFoodsCache = mapped;
+      globalFoodsLoaded = true;
+      setFoods(mapped);
     } catch (err) {
       console.error("Exception in useAllFoods refresh:", err);
     } finally {

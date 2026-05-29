@@ -42,9 +42,12 @@ interface TransactionContextValue {
 
 const TransactionContext = createContext<TransactionContextValue | null>(null);
 
+let globalTransactionsCache: Transaction[] = [];
+let globalTransactionsLoaded = false;
+
 export function TransactionProvider({ children }: { children: ReactNode }) {
   const { user, profile, loading: authLoading } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>(globalTransactionsCache);
   const [userStats, setUserStats] = useState<UserStats>({
     mealsCollected: 0,
     animalsFed: 0,
@@ -52,16 +55,19 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     pickupSuccess: 0,
     badges: []
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!globalTransactionsLoaded);
 
   const fetchTransactions = useCallback(async () => {
     if (!user) {
       setTransactions([]);
+      globalTransactionsCache = [];
+      globalTransactionsLoaded = false;
       setLoading(false);
       return;
     }
 
     try {
+      if (!globalTransactionsLoaded) setLoading(true);
       const { data, error } = await supabase
         .from("transactions")
         .select("*, food:foods(*)")
@@ -71,7 +77,10 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error("Error fetching transactions:", error);
       } else {
-        setTransactions(data || []);
+        const txs = data || [];
+        globalTransactionsCache = txs;
+        globalTransactionsLoaded = true;
+        setTransactions(txs);
       }
     } catch (err) {
       console.error("Exception fetching transactions:", err);
