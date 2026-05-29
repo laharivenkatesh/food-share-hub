@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "./useAuth";
 
@@ -118,22 +118,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authLoading) return;
 
-    let timerId: NodeJS.Timeout;
-    let active = true;
-
-    const poll = async () => {
-      if (!active) return;
-      await fetchTransactions();
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    };
-
-    fetchTransactions().then(() => {
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    });
+    fetchTransactions();
 
     const channelId = `transactions-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
@@ -148,8 +133,6 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
-      active = false;
-      clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
   }, [fetchTransactions, authLoading]);
@@ -157,6 +140,46 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     computeStats();
   }, [transactions, computeStats]);
+
+  // Global Geolocation tracking for active collector transactions
+  const activeCollectorTxs = transactions.filter(
+    t => t.collector_id === user?.id && (t.status === "pending" || t.status === "accepted")
+  );
+
+  const activeCollectorTxsRef = useRef(activeCollectorTxs);
+  useEffect(() => {
+    activeCollectorTxsRef.current = activeCollectorTxs;
+  }, [activeCollectorTxs]);
+
+  useEffect(() => {
+    if (!user || activeCollectorTxs.length === 0) return;
+    if (!("geolocation" in navigator)) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const currentTxs = activeCollectorTxsRef.current;
+        for (const tx of currentTxs) {
+          if (tx.collector_lat !== latitude || tx.collector_lng !== longitude) {
+            await supabase
+              .from("transactions")
+              .update({
+                collector_lat: latitude,
+                collector_lng: longitude,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", tx.id);
+          }
+        }
+      },
+      (err) => console.warn("Global live location watch error:", err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [user, activeCollectorTxs.length > 0]);
 
   const requestFood = async (
     foodId: string,

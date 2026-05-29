@@ -220,8 +220,47 @@ begin
   ) then
     alter publication supabase_realtime add table public.notifications;
   end if;
+
+  -- Add public.reviews if not already in publication
+  if not exists (
+    select 1 
+    from pg_publication_rel pr 
+    join pg_class c on pr.prrelid = c.oid 
+    join pg_publication p on pr.prpubid = p.oid 
+    where p.pubname = 'supabase_realtime' 
+      and c.relname = 'reviews' 
+      and c.relnamespace = 'public'::regnamespace
+  ) then
+    alter publication supabase_realtime add table public.reviews;
+  end if;
 end
 $$;
+
+
+-- ============================================================
+-- 8) CREATE THE REVIEWS TABLE
+-- ============================================================
+create table if not exists public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  food_id uuid not null references public.foods(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  user_name text not null,
+  rating integer not null check (rating >= 1 and rating <= 5),
+  comment text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.reviews enable row level security;
+
+drop policy if exists "Reviews are viewable by everyone" on public.reviews;
+drop policy if exists "Authenticated users can insert reviews" on public.reviews;
+
+create policy "Reviews are viewable by everyone"
+  on public.reviews for select using (true);
+
+create policy "Authenticated users can insert reviews"
+  on public.reviews for insert with check (auth.uid() = user_id);
+
 
 
 

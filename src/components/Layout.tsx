@@ -7,6 +7,7 @@ import { useEffect, useState, useRef } from "react";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useAllFoods } from "@/hooks/useMyPosts";
 import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
@@ -55,7 +56,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const hideNav = location.pathname === "/auth";
 
-  const { transactions } = useTransactions();
+  const { transactions, markCollected, markDonated } = useTransactions();
   const { foods } = useAllFoods();
   const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
   const bellDistancesRef = useRef<Record<string, number>>({});
@@ -350,6 +351,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                             </span>
                                           </div>
                                         )}
+
+                                        {/* Action confirmation buttons directly in the notification card */}
+                                        {t.status !== "completed" && (
+                                          <div className="pt-1.5 border-t border-border/40 mt-1 flex justify-end">
+                                            {!isDonorCheck && !t.collector_accepted && (
+                                              <button
+                                                onClick={async () => {
+                                                  await markCollected(t.id);
+                                                  toast.success("Marked as collected!");
+                                                }}
+                                                className="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] text-center transition-colors shadow-sm"
+                                              >
+                                                Yes Collected
+                                              </button>
+                                            )}
+                                            {isDonorCheck && !t.donor_accepted && (
+                                              <button
+                                                onClick={async () => {
+                                                  await markDonated(t.id);
+                                                  toast.success("Marked as donated!");
+                                                }}
+                                                className="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] text-center transition-colors shadow-sm"
+                                              >
+                                                Yes Donated
+                                              </button>
+                                            )}
+                                            {((!isDonorCheck && t.collector_accepted) || (isDonorCheck && t.donor_accepted)) && (
+                                              <span className="text-[10px] font-bold text-muted-foreground italic">
+                                                Waiting for confirmation...
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
@@ -376,12 +410,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
 
-              <Link
-                to="/dashboard"
-                className="px-3 py-1.5 rounded-xl bg-primary-deep text-primary-deep-foreground text-xs font-extrabold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+              <button
+                onClick={handleSignOut}
+                className="px-3 py-1.5 rounded-xl bg-destructive text-destructive-foreground text-xs font-extrabold shadow-sm hover:opacity-90 active:scale-95 transition-all"
               >
-                Dashboard
-              </Link>
+                Log Out
+              </button>
             </div>
           )}
         </header>

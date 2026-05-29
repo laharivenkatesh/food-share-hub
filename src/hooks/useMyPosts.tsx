@@ -36,7 +36,13 @@ function mapRow(row: any): FoodItem {
     bookedPortions: row.booked_portions || 0,
     trustScore: 4.5,
     confidence: "High",
-    reviews: [],
+    reviews: (row.reviews || []).map((r: any) => ({
+      id: r.id,
+      user: r.user_name || "Anonymous",
+      rating: r.rating,
+      comment: r.comment,
+      date: new Date(r.created_at).toLocaleDateString(),
+    })),
     provider: {
       id: row.profiles?.id || row.user_id,
       name: row.profiles?.name || "Unknown User",
@@ -66,7 +72,7 @@ export function useMyPosts() {
 
       const { data, error } = await supabase
         .from("foods")
-        .select("*, profiles!foods_user_id_profiles_fkey(*)")
+        .select("*, profiles!foods_user_id_profiles_fkey(*), reviews(*)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -86,28 +92,26 @@ export function useMyPosts() {
   useEffect(() => {
     if (authLoading) return;
 
-    let timerId: NodeJS.Timeout;
-    let active = true;
+    refresh();
 
-    const poll = async () => {
-      if (!active) return;
-      await refresh(true);
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    };
+    if (!user) return;
 
-    refresh().then(() => {
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    });
+    const channelId = `my-posts-realtime-${Math.random().toString(36).substring(2, 9)}`;
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "foods", filter: `user_id=eq.${user.id}` },
+        () => {
+          refresh(true);
+        }
+      )
+      .subscribe();
 
     return () => {
-      active = false;
-      clearTimeout(timerId);
+      supabase.removeChannel(channel);
     };
-  }, [refresh, authLoading]);
+  }, [refresh, authLoading, user]);
 
   const addPost = useCallback(
     async (input: any) => {
@@ -177,7 +181,7 @@ export function useAllFoods() {
       if (!isBackground) setLoading(true);
       const { data, error } = await supabase
         .from("foods")
-        .select("*, profiles!foods_user_id_profiles_fkey(*)")
+        .select("*, profiles!foods_user_id_profiles_fkey(*), reviews(*)")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -196,22 +200,7 @@ export function useAllFoods() {
   useEffect(() => {
     if (authLoading) return;
 
-    let timerId: NodeJS.Timeout;
-    let active = true;
-
-    const poll = async () => {
-      if (!active) return;
-      await refresh(true);
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    };
-
-    refresh().then(() => {
-      if (active) {
-        timerId = setTimeout(poll, 1000);
-      }
-    });
+    refresh();
 
     const channelId = `foods-realtime-${Math.random().toString(36).substring(2, 9)}`;
     const channel = supabase
@@ -226,8 +215,6 @@ export function useAllFoods() {
       .subscribe();
 
     return () => {
-      active = false;
-      clearTimeout(timerId);
       supabase.removeChannel(channel);
     };
   }, [refresh, authLoading]);

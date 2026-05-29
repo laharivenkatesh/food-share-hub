@@ -1,20 +1,84 @@
 import { Star } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Review } from "@/types/food";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
-export default function ReviewSection({ initial }: { initial: Review[] }) {
+interface ReviewSectionProps {
+  foodId: string;
+  providerId: string;
+  initial: Review[];
+}
+
+export default function ReviewSection({ foodId, providerId, initial }: ReviewSectionProps) {
+  const { user, profile } = useAuth();
   const [reviews, setReviews] = useState<Review[]>(initial);
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
 
-  const submit = (e: React.FormEvent) => {
+  useEffect(() => {
+    setReviews(initial);
+  }, [initial]);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rating || !comment.trim()) return;
-    setReviews([{ id: Date.now().toString(), user: "You", rating, comment, date: "just now" }, ...reviews]);
-    setRating(0); setComment("");
-    toast.success("✅ Feedback submitted");
+    if (!user || !profile) {
+      toast.error("Please login to submit a review");
+      return;
+    }
+
+    try {
+      // 1. Insert review into Supabase
+      const { data, error } = await supabase
+        .from("reviews")
+        .insert({
+          food_id: foodId,
+          user_id: user.id,
+          user_name: profile.name || "Anonymous",
+          rating,
+          comment,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error submitting review:", error);
+        toast.error("Failed to submit review");
+        return;
+      }
+
+      // 2. Insert notification for provider (only if reviewer is not the provider themselves)
+      if (providerId && providerId !== user.id) {
+        await supabase.from("notifications").insert({
+          user_id: providerId,
+          food_id: foodId,
+          title: "⭐ New Review Received!",
+          message: `${profile.name || "A collector"} left a ${rating}-star review: "${comment}"`,
+        });
+      }
+
+      // 3. Update local state
+      setReviews([
+        {
+          id: data.id,
+          user: profile.name || "You",
+          rating,
+          comment,
+          date: "just now",
+        },
+        ...reviews,
+      ]);
+
+      setRating(0);
+      setComment("");
+      toast.success("✅ Feedback submitted");
+    } catch (err) {
+      console.error("Exception submitting review:", err);
+      toast.error("An error occurred. Please try again.");
+    }
   };
 
   return (

@@ -56,34 +56,6 @@ export default function FoodDetail() {
   const myTx = user ? foodTxs.find(t => t.collector_id === user.id) : undefined;
   const isCollector = !!myTx;
 
-  // Watch collector's live location and sync to Supabase transactions table
-  useEffect(() => {
-    if (!isCollector || !myTx || !user) return;
-    if (!("geolocation" in navigator)) return;
-
-    const watchId = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        if (myTx.collector_lat !== latitude || myTx.collector_lng !== longitude) {
-          await supabase
-            .from("transactions")
-            .update({
-              collector_lat: latitude,
-              collector_lng: longitude,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", myTx.id);
-        }
-      },
-      (err) => console.warn("Live location watch error:", err),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
-  }, [isCollector, myTx?.id, user]);
-
   useEffect(() => {
     const fetchOppositeProfiles = async () => {
       if (foodTxs.length > 0 && user && food) {
@@ -428,7 +400,7 @@ export default function FoodDetail() {
                   }}
                   className="btn-primary w-full py-2.5 text-xs font-extrabold"
                 >
-                  I Have Collected This
+                  Yes Collected
                 </button>
               </div>
             )}
@@ -613,7 +585,7 @@ export default function FoodDetail() {
         {renderTransactionStatus()}
 
 
-        <ReviewSection initial={food.reviews} />
+        <ReviewSection foodId={food.id} providerId={food.provider.id} initial={food.reviews} />
       </div>
     </div>
   );
