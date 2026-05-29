@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAllFoods } from "@/hooks/useMyPosts";
+import { useAllFoods, useMyPosts } from "@/hooks/useMyPosts";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 import { Category, FoodItem } from "@/types/food";
 import { getFoodTimes } from "@/lib/utils";
 import Chip from "@/components/Chip";
-import { RefreshCw, MapPin, Users, Star, ArrowLeft, Clock, Search } from "lucide-react";
+import { RefreshCw, MapPin, Users, Star, ArrowLeft, Clock, Search, Trash2 } from "lucide-react";
 
 const categories: Category[] = ["Veg", "Non-Veg", "Bakery", "Fried", "Sweets"];
 
@@ -43,6 +45,9 @@ function GraceCountdown({ secondaryExpiry }: { secondaryExpiry: number }) {
 
 // ─── Custom Card for Expired Food Listings ──────────────────────────────────
 function ExpiredFoodCard({ food }: { food: FoodItem }) {
+  const { user } = useAuth();
+  const { removePost } = useMyPosts();
+  const isDonor = user?.id === food.provider.id;
   const { secondaryExpiry } = getFoodTimes(food);
   const isReserved = food.status === "reserved";
   const isCollected = food.status === "collected";
@@ -71,7 +76,7 @@ function ExpiredFoodCard({ food }: { food: FoodItem }) {
 
   return (
     <article className="card-soft border border-dashed border-warning/30 bg-card/95 hover:border-warning/60 transition-all duration-300 animate-fade-up">
-      <Link to={isCollected ? "#" : `/food/${food.id}`} className={isCollected ? "pointer-events-none" : "block overflow-hidden"}>
+      <Link to={`/food/${food.id}`} className="block overflow-hidden">
         <div className="relative">
           <img 
             src={food.image} 
@@ -92,7 +97,7 @@ function ExpiredFoodCard({ food }: { food: FoodItem }) {
       </Link>
 
       <div className="p-4 space-y-3">
-        <Link to={isCollected ? "#" : `/food/${food.id}`} className={isCollected ? "pointer-events-none" : "block hover:opacity-90 transition-opacity"}>
+        <Link to={`/food/${food.id}`} className="block hover:opacity-90 transition-opacity">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <h3 className="font-extrabold text-lg leading-tight text-foreground/90 truncate">{food.name}</h3>
@@ -157,12 +162,28 @@ function ExpiredFoodCard({ food }: { food: FoodItem }) {
           </div>
         </div>
 
-        <Link
-          to={isCollected ? "#" : `/food/${food.id}`}
-          className={`btn-primary block text-center bg-gradient-to-r from-warning to-amber-600 border-none text-white shadow-soft ${isCollected ? "pointer-events-none opacity-50" : ""}`}
-        >
-          {isCollected ? "Collected" : "Claim Expired Food"}
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            to={`/food/${food.id}`}
+            className={`flex-1 btn-primary block text-center ${isCollected ? "bg-muted text-muted-foreground hover:bg-muted/80 border border-border/80" : "bg-gradient-to-r from-warning to-amber-600 border-none text-white shadow-soft"}`}
+          >
+            {isCollected ? "Collected" : "Claim Expired Food"}
+          </Link>
+          {isDonor && (
+            <button
+              onClick={async () => {
+                if (window.confirm(`Are you sure you want to delete "${food.name}"?`)) {
+                  await removePost(food.id);
+                  toast.success("Listing deleted successfully!");
+                }
+              }}
+              className="px-3.5 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-white transition-all flex items-center justify-center shrink-0"
+              title="Delete Listing"
+            >
+              <Trash2 className="w-4.5 h-4.5" />
+            </button>
+          )}
+        </div>
       </div>
     </article>
   );

@@ -167,6 +167,7 @@ export function useMyPosts() {
   const removePost = useCallback(async (id: string) => {
     await supabase.from("foods").delete().eq("id", id);
     globalMyPostsCache = globalMyPostsCache.filter((p) => p.id !== id);
+    globalFoodsCache = globalFoodsCache.filter((p) => p.id !== id);
     setPosts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 

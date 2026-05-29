@@ -124,10 +124,17 @@ export default function FoodDetail() {
 
   const renderPortionBooking = () => {
     if (isDonor) {
+      let donorStatusMsg = "👑 You are the provider of this listing. Waiting for bookings...";
+      if (isCollected) {
+        donorStatusMsg = "👑 You are the provider of this listing. Status: Collected & Closed";
+      } else if (isFullyBooked || food.status === "reserved") {
+        donorStatusMsg = "👑 You are the provider of this listing. Status: Fully Booked / Reserved";
+      }
+
       return (
         <div className="space-y-3">
           <div className="bg-muted/50 p-4 rounded-2xl text-center text-xs font-bold text-muted-foreground">
-            👑 You are the provider of this listing. Waiting for bookings...
+            {donorStatusMsg}
           </div>
           <button
             onClick={async () => {
