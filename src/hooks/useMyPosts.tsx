@@ -44,15 +44,15 @@ function mapRow(row: any): FoodItem {
       date: new Date(r.created_at).toLocaleDateString(),
     })),
     provider: {
-      id: row.profiles?.id || row.user_id,
-      name: row.profiles?.name || "Unknown User",
+      id: row.profiles?.id || row["profiles!foods_user_id_profiles_fkey"]?.id || row.user_id,
+      name: row.profiles?.name || row["profiles!foods_user_id_profiles_fkey"]?.name || "Unknown User",
       trustScore: 4.5,
       badges: ["Community Member"],
       streak: 1,
       reliability: "high",
       avatar: "🧑",
-      email: row.profiles?.email || "",
-      phone: row.profiles?.phone || "",
+      email: row.profiles?.email || row["profiles!foods_user_id_profiles_fkey"]?.email || "",
+      phone: row.profiles?.phone || row["profiles!foods_user_id_profiles_fkey"]?.phone || "",
     },
   };
 }

@@ -36,7 +36,7 @@ export default function FoodDetail() {
   const { transactions, getTransactionForFood, requestFood, markCollected, markDonated } = useTransactions();
 
   const { foods, loading: foodsLoading } = useAllFoods();
-  const { removePost } = useMyPosts();
+  const { posts, removePost } = useMyPosts();
   const food = foods.find((f) => f.id === id);
   const [rt, setRt] = useState<RealtimeStatus>("Still Available");
   const [oppositeProfiles, setOppositeProfiles] = useState<Record<string, any>>({});
@@ -51,7 +51,7 @@ export default function FoodDetail() {
     }
   }, [food]);
 
-  const isDonor = food && user?.id === food.provider.id;
+  const isDonor = food && (user?.id === food.provider.id || posts.some((p) => p.id === food.id));
   const foodTxs = food ? transactions.filter(t => t.food_id === food.id && t.status !== "cancelled") : [];
   const myTx = user ? foodTxs.find(t => t.collector_id === user.id) : undefined;
   const isCollector = !!myTx;

@@ -46,8 +46,8 @@ function GraceCountdown({ secondaryExpiry }: { secondaryExpiry: number }) {
 // ─── Custom Card for Expired Food Listings ──────────────────────────────────
 function ExpiredFoodCard({ food }: { food: FoodItem }) {
   const { user } = useAuth();
-  const { removePost } = useMyPosts();
-  const isDonor = user?.id === food.provider.id;
+  const { posts, removePost } = useMyPosts();
+  const isDonor = user?.id === food.provider.id || posts.some((p) => p.id === food.id);
   const { secondaryExpiry } = getFoodTimes(food);
   const isReserved = food.status === "reserved";
   const isCollected = food.status === "collected";

@@ -17,8 +17,8 @@ const statusStyles: Record<string, string> = {
 
 export default function FoodCard({ food }: { food: FoodItem }) {
   const { user } = useAuth();
-  const { removePost } = useMyPosts();
-  const isDonor = user?.id === food.provider.id;
+  const { posts, removePost } = useMyPosts();
+  const isDonor = user?.id === food.provider.id || posts.some((p) => p.id === food.id);
   const isUrgent = food.expiryHours < 1;
   const isReserved = food.status === "reserved";
   const isCollected = food.status === "collected";
