@@ -123,36 +123,44 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "notifications",
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          const newNotif = payload.new as DbNotification;
-          
-          // Add to local state
-          setNotifications((prev) => [newNotif, ...prev]);
+          if (payload.eventType === "INSERT") {
+            const newNotif = payload.new as DbNotification;
+            
+            // Add to local state
+            setNotifications((prev) => {
+              if (prev.some(n => n.id === newNotif.id)) return prev;
+              return [newNotif, ...prev];
+            });
 
-          // Play sound chime if enabled
-          if (soundEnabled) {
-            playNotificationSound();
-          }
+            // Play sound chime if enabled
+            if (soundEnabled) {
+              playNotificationSound();
+            }
 
-          // Show interactive toast popup
-          toast("🍱 " + newNotif.title, {
-            description: newNotif.message,
-            duration: 6000,
-            action: {
-              label: "View",
-              onClick: () => {
-                // Navigate will be handled in UI or using window.location for global hook
-                window.location.hash = `#/food/${newNotif.food_id}`;
-                // Fallback direct path
-                window.dispatchEvent(new CustomEvent("view-food-notification", { detail: newNotif }));
+            // Show interactive toast popup
+            toast("🍱 " + newNotif.title, {
+              description: newNotif.message,
+              duration: 6000,
+              action: {
+                label: "View",
+                onClick: () => {
+                  window.location.hash = `#/food/${newNotif.food_id}`;
+                  window.dispatchEvent(new CustomEvent("view-food-notification", { detail: newNotif }));
+                },
               },
-            },
-          });
+            });
+          } else if (payload.eventType === "DELETE") {
+            const oldId = payload.old.id;
+            setNotifications((prev) => prev.filter((n) => n.id !== oldId));
+          } else {
+            refresh();
+          }
         }
       )
       .subscribe();
@@ -163,28 +171,50 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [user, refresh, soundEnabled, authLoading]);
 
   const markAsRead = useCallback(async (id: string) => {
-    // Optimistic local state update
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    );
+    const notif = notifications.find(n => n.id === id);
+    if (!notif) return;
 
-    if (!isSupabaseConfigured) return;
+    const isBookingNotif = notif.title.includes("Booking") || notif.title.includes("Confirmed");
 
-    try {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", id);
-
-      if (error) {
-        console.error("Error marking notification as read:", error);
-        // Rollback on error
-        refresh();
+    let hasActiveTx = false;
+    if (isBookingNotif && isSupabaseConfigured) {
+      try {
+        const { data: txs } = await supabase
+          .from("transactions")
+          .select("status")
+          .eq("food_id", notif.food_id)
+          .neq("status", "completed")
+          .neq("status", "cancelled");
+        hasActiveTx = (txs && txs.length > 0) || false;
+      } catch (err) {
+        console.error("Error checking active transactions for notification cleanup:", err);
       }
-    } catch (err) {
-      console.error("Exception marking notification as read:", err);
     }
-  }, [refresh]);
+
+    if (isBookingNotif && hasActiveTx) {
+      // Keep it, just mark as read
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+      );
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+        } catch (err) {
+          console.error("Error updating notification status:", err);
+        }
+      }
+    } else {
+      // Automatically delete it!
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from("notifications").delete().eq("id", id);
+        } catch (err) {
+          console.error("Error deleting notification:", err);
+        }
+      }
+    }
+  }, [notifications]);
 
   const markAllAsRead = useCallback(async () => {
     if (!user) return;

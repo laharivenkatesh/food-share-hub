@@ -531,21 +531,7 @@ export default function FoodDetail() {
           </button>
         </section>
 
-        {/* Realtime status */}
-        <section className="space-y-2">
-          <h2 className="font-extrabold">Live Status</h2>
-          <div className="flex gap-2 flex-wrap">
-            {realtimeOptions.map((r) => (
-              <button
-                key={r}
-                onClick={() => { setRt(r); toast.success(`Status: ${r}`); }}
-                className={`chip ${rt === r ? "chip-active" : "chip-default"}`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </section>
+
 
         {/* Provider */}
         <section className="card-soft p-4 space-y-3">

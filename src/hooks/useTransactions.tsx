@@ -17,6 +17,8 @@ export interface Transaction {
   collector_lng?: number | null;
   created_at: string;
   updated_at: string;
+  food?: any;
+  foods?: any;
 }
 
 export interface UserStats {
@@ -62,7 +64,7 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("transactions")
-        .select("*")
+        .select("*, food:foods(*)")
         .or(`donor_id.eq.${user.id},collector_id.eq.${user.id}`)
         .order("created_at", { ascending: false });
 
@@ -143,7 +145,17 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
 
   // Global Geolocation tracking for active collector transactions
   const activeCollectorTxs = transactions.filter(
-    t => t.collector_id === user?.id && (t.status === "pending" || t.status === "accepted")
+    t => {
+      if (t.collector_id !== user?.id) return false;
+      if (t.status === "completed" || t.status === "cancelled") return false;
+      if (t.collector_accepted) return false;
+      const f = t.food || t.foods;
+      if (f) {
+        if (f.status === "collected") return false;
+        if (f.realtime_status === "Not Available") return false;
+      }
+      return t.status === "pending" || t.status === "accepted";
+    }
   );
 
   const activeCollectorTxsRef = useRef(activeCollectorTxs);
@@ -155,29 +167,45 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
     if (!user || activeCollectorTxs.length === 0) return;
     if (!("geolocation" in navigator)) return;
 
-    const watchId = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const currentTxs = activeCollectorTxsRef.current;
-        for (const tx of currentTxs) {
-          if (tx.collector_lat !== latitude || tx.collector_lng !== longitude) {
-            await supabase
-              .from("transactions")
-              .update({
-                collector_lat: latitude,
-                collector_lng: longitude,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", tx.id);
-          }
+    const updateLocation = async (pos: GeolocationPosition) => {
+      const { latitude, longitude } = pos.coords;
+      const currentTxs = activeCollectorTxsRef.current;
+      for (const tx of currentTxs) {
+        // Compare with a tiny threshold to prevent redundant writes
+        const latDiff = Math.abs((tx.collector_lat || 0) - latitude);
+        const lngDiff = Math.abs((tx.collector_lng || 0) - longitude);
+        if (latDiff > 0.00001 || lngDiff > 0.00001) {
+          await supabase
+            .from("transactions")
+            .update({
+              collector_lat: latitude,
+              collector_lng: longitude,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", tx.id);
         }
-      },
+      }
+    };
+
+    // 1. Register watchPosition
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => updateLocation(pos),
       (err) => console.warn("Global live location watch error:", err),
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: false, timeout: 15000 }
     );
+
+    // 2. Backup polling interval (every 10 seconds)
+    const intervalId = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => updateLocation(pos),
+        (err) => console.warn("Backup getCurrentPosition error:", err),
+        { enableHighAccuracy: false, timeout: 10000 }
+      );
+    }, 10000);
 
     return () => {
       navigator.geolocation.clearWatch(watchId);
+      clearInterval(intervalId);
     };
   }, [user, activeCollectorTxs.length > 0]);
 
@@ -277,21 +305,26 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
 
     if (!tx) return;
 
-    const newCollectorAccepted = true;
-    const newStatus = tx.donor_accepted && newCollectorAccepted ? "completed" : "accepted";
-
     const { error } = await supabase
       .from("transactions")
       .update({
-        collector_accepted: newCollectorAccepted,
-        status: newStatus,
+        collector_accepted: true,
+        status: "completed",
         updated_at: new Date().toISOString()
       })
       .eq("id", transactionId);
 
     if (!error) {
-      if (newStatus === "completed") {
-        await syncFoodStatusOnCompletion(tx.food_id);
+      await syncFoodStatusOnCompletion(tx.food_id);
+      // Delete notification for collector immediately
+      try {
+        await supabase
+          .from("notifications")
+          .delete()
+          .eq("food_id", tx.food_id)
+          .eq("user_id", tx.collector_id);
+      } catch (err) {
+        console.error("Error deleting notification after collection:", err);
       }
       await fetchTransactions();
     }
@@ -306,21 +339,26 @@ export function TransactionProvider({ children }: { children: ReactNode }) {
 
     if (!tx) return;
 
-    const newDonorAccepted = true;
-    const newStatus = newDonorAccepted && tx.collector_accepted ? "completed" : "accepted";
-
     const { error } = await supabase
       .from("transactions")
       .update({
-        donor_accepted: newDonorAccepted,
-        status: newStatus,
+        donor_accepted: true,
+        status: "completed",
         updated_at: new Date().toISOString()
       })
       .eq("id", transactionId);
 
     if (!error) {
-      if (newStatus === "completed") {
-        await syncFoodStatusOnCompletion(tx.food_id);
+      await syncFoodStatusOnCompletion(tx.food_id);
+      // Delete notification for donor immediately
+      try {
+        await supabase
+          .from("notifications")
+          .delete()
+          .eq("food_id", tx.food_id)
+          .eq("user_id", tx.donor_id);
+      } catch (err) {
+        console.error("Error deleting notification after donation:", err);
       }
       await fetchTransactions();
     }

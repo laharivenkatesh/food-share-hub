@@ -152,7 +152,8 @@ export default function Home() {
     const now = Date.now();
     arr = arr.filter((f) => {
       const { primaryExpiry } = getFoodTimes(f);
-      return now < primaryExpiry;
+      const remainingPortions = f.feeds - (f.bookedPortions || 0);
+      return now < primaryExpiry && f.status !== "collected" && remainingPortions > 0;
     });
 
     if (userLoc) {
@@ -165,12 +166,14 @@ export default function Home() {
 
 
   const nearbyNGOs = useMemo(() => {
+    if (!userLoc) return [];
+    
     let filtered = ngosList;
     if (ngoFilter !== "All") filtered = filtered.filter((n) => n.types.includes(ngoFilter));
-    if (!userLoc) return filtered.map((n) => ({ ...n, distance: null as number | null }));
+    
     return filtered
       .map((n) => ({ ...n, distance: calculateDistance(userLoc.lat, userLoc.lng, n.lat, n.lng) }))
-      .filter((n) => n.distance <= 50)
+      .filter((n) => n.distance <= 40)
       .sort((a, b) => a.distance - b.distance);
   }, [userLoc, ngoFilter]);
 
